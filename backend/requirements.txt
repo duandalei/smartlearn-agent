@@ -1,0 +1,33 @@
+# 彭城智学 SmartLearn Agent —— 后端依赖
+# 安装：pip install -r requirements.txt
+# 说明：本文件按 PROJECT_CONTEXT 技术栈锁定，骨架阶段已包含运行所需最小集；
+#       其余依赖随功能阶段逐步启用（版本区间已固定，避免后续漂移）。
+
+# ---- Web 框架与服务器 ----
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+
+# ---- 配置与校验 ----
+pydantic>=2.7,<3.0
+pydantic-settings>=2.3,<3.0
+
+# ---- ORM 与数据库 ----
+SQLAlchemy>=2.0,<3.0
+
+# ---- 认证与密码 ----
+# 密码哈希使用标准库 hashlib.pbkdf2_hmac（见 app/core/security.py），无第三方依赖。
+# 不引入 passlib / bcrypt：规避 passlib 与 bcrypt>=4.1 的兼容性告警，也减少复现依赖。
+python-jose[cryptography]>=3.3,<4.0
+
+# ---- RAG：向量库与文档解析 ----
+chromadb>=0.5,<1.0
+pypdf>=4.2,<6.0
+python-docx>=1.1,<2.0
+python-pptx>=0.6.23,<2.0
+markdown>=3.6,<4.0
+
+# ---- LLM 调用（OpenAI 兼容协议）----
+openai>=1.30,<2.0
+
+# ---- 表单与文件上传 ----
+python-multipart>=0.0.9,<1.0

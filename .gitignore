@@ -1,0 +1,46 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# ---- Node / 前端 ----
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vite/
+
+# ---- 环境变量（真实密钥，禁止入库）----
+.env
+backend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# ---- IDE / 系统 ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- 运行时数据（保留公共知识库种子资料）----
+data/*
+!data/.gitkeep
+!data/public_kb/
+!data/public_kb/**
+
+# 构建产物 / 缓存
+*.log
+# ---- 码道本地配置 ----
+.codeartsdoer/
