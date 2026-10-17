@@ -5,8 +5,9 @@
   由 main.py 直接挂载到 ``/health``。
 - ``api_router``：业务路由，由 main.py 以 ``/api/v1`` 前缀挂载。
 
-P2 挂载 15 个业务资源（每资源：GET 列表分页 + GET 详情）；路径即最终
-正式路径（路径演进契约），P3+ 的写方法在各路由文件同路径扩展。
+P3 起全量端点鉴权（PROJECT_CONTEXT 收编裁决）：除 ``/health``、
+``/api/v1/auth/register``、``/api/v1/auth/login`` 三个公开端点外，
+所有 ``/api/v1`` 端点均依赖 ``get_current_user`` 并按当前用户隔离数据。
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1.health import router as health_router
+from app.api.v1.auth import router as auth_router
+from app.api.v1.profile import router as profile_router
 from app.api.v1.users import router as users_router
 from app.api.v1.user_profiles import router as user_profiles_router
 from app.api.v1.goals import router as goals_router
@@ -32,6 +35,8 @@ from app.api.v1.reports import router as reports_router
 
 # 业务路由（挂载前缀 /api/v1）。
 api_router: APIRouter = APIRouter()
+api_router.include_router(auth_router)
+api_router.include_router(profile_router)
 api_router.include_router(users_router)
 api_router.include_router(user_profiles_router)
 api_router.include_router(goals_router)

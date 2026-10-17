@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -44,10 +45,39 @@ _HTTP_STATUS_TO_CODE: dict[int, int] = {
     status.HTTP_401_UNAUTHORIZED: CODE_TOKEN_INVALID,
     status.HTTP_403_FORBIDDEN: CODE_FORBIDDEN,
     status.HTTP_404_NOT_FOUND: CODE_NOT_FOUND,
+    status.HTTP_405_METHOD_NOT_ALLOWED: CODE_BIZ_CONFLICT,
     status.HTTP_409_CONFLICT: CODE_ALREADY_EXISTS,
-    status.HTTP_422_UNPROCESSABLE_ENTITY: CODE_PARAM_INVALID,
+    422: CODE_PARAM_INVALID,
     status.HTTP_500_INTERNAL_SERVER_ERROR: CODE_INTERNAL_ERROR,
     status.HTTP_502_BAD_GATEWAY: CODE_LLM_FAILED,
+}
+
+# Starlette HTTPException 的标准英文 detail（框架自动抛出时）。
+_HTTP_STATUS_DEFAULT_DETAIL: dict[int, str] = {
+    status.HTTP_400_BAD_REQUEST: "Bad Request",
+    status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+    status.HTTP_403_FORBIDDEN: "Forbidden",
+    status.HTTP_404_NOT_FOUND: "Not Found",
+    status.HTTP_405_METHOD_NOT_ALLOWED: "Method Not Allowed",
+    status.HTTP_409_CONFLICT: "Conflict",
+    422: "Unprocessable Entity",
+    status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
+    status.HTTP_502_BAD_GATEWAY: "Bad Gateway",
+    status.HTTP_503_SERVICE_UNAVAILABLE: "Service Unavailable",
+}
+
+# HTTP 状态码 -> 中文描述（PROJECT_CONTEXT 5.4：错误提示一律中文）。
+_HTTP_STATUS_TO_MESSAGE: dict[int, str] = {
+    status.HTTP_400_BAD_REQUEST: "请求参数错误",
+    status.HTTP_401_UNAUTHORIZED: "未登录或认证已失效",
+    status.HTTP_403_FORBIDDEN: "无权限访问该资源",
+    status.HTTP_404_NOT_FOUND: "资源不存在",
+    status.HTTP_405_METHOD_NOT_ALLOWED: "请求方法不允许",
+    status.HTTP_409_CONFLICT: "资源已存在或状态冲突",
+    422: "参数校验失败",
+    status.HTTP_500_INTERNAL_SERVER_ERROR: "服务器内部错误",
+    status.HTTP_502_BAD_GATEWAY: "上游服务错误",
+    status.HTTP_503_SERVICE_UNAVAILABLE: "服务暂不可用",
 }
 
 
@@ -160,19 +190,31 @@ def register_exception_handlers(app: FastAPI) -> None:
         else:
             message = "参数校验失败"
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=error(CODE_PARAM_INVALID, message, errors),
+            status_code=422,
+            # Pydantic v2 的 ctx 可能携带异常对象（如 model_validator 抛出的
+            # ValueError），直接序列化会 TypeError；jsonable_encoder 统一转字符串。
+            content=error(CODE_PARAM_INVALID, message, jsonable_encoder(errors)),
         )
 
     @app.exception_handler(StarletteHTTPException)
     async def _handle_http_exception(
         request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
-        """处理框架 HTTPException（如路由 404、方法 405）。"""
+        """处理框架 HTTPException（如路由 404、方法 405）。
+
+        detail 为框架标准英文短语（如 "Not Found"）时，替换为
+        PROJECT_CONTEXT 5.4 错误码表对应的中文描述；
+        业务代码主动抛出的自定义 detail 原样保留。
+        """
         code = _HTTP_STATUS_TO_CODE.get(exc.status_code, CODE_INTERNAL_ERROR)
+        detail_str = str(exc.detail)
+        if detail_str == _HTTP_STATUS_DEFAULT_DETAIL.get(exc.status_code):
+            message = _HTTP_STATUS_TO_MESSAGE.get(exc.status_code, detail_str)
+        else:
+            message = detail_str
         return JSONResponse(
             status_code=exc.status_code,
-            content=error(code, str(exc.detail)),
+            content=error(code, message),
         )
 
     @app.exception_handler(Exception)

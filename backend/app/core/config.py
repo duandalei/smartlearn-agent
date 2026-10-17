@@ -14,7 +14,11 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# JWT_SECRET 禁止使用的占位值（与 backend/.env.example 保持一致）。
+_JWT_SECRET_PLACEHOLDER: str = "change-me-in-env"
 
 # ---------------------------------------------------------------------------
 # 路径计算：backend/app/core/config.py -> backend -> 项目根
@@ -98,6 +102,26 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+
+    @model_validator(mode="after")
+    def _validate_jwt_secret(self) -> "Settings":
+        """启动时强制校验 JWT 密钥（安全红线）。
+
+        JWT_SECRET 为空、纯空白或仍等于 .env.example 的占位值时，
+        配置加载直接失败 —— 服务必须启动失败退出，禁止使用任何
+        内置默认密钥继续运行。
+
+        Raises:
+            ValueError: JWT_SECRET 缺失或仍为占位值。
+        """
+        secret = (self.JWT_SECRET or "").strip()
+        if not secret or secret == _JWT_SECRET_PLACEHOLDER:
+            raise ValueError(
+                "JWT_SECRET 未配置或仍为占位值：请在 .env 中设置为随机强密钥"
+                "（可用 python -c \"import secrets; print(secrets.token_hex(32))\" "
+                "生成）。禁止使用空值或占位值启动服务。"
+            )
+        return self
 
 
 @lru_cache(maxsize=1)

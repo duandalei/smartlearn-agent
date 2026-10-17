@@ -48,7 +48,7 @@
 | ORM | **SQLAlchemy 2.x** | 使用 2.x 声明式风格（`Mapped` / `mapped_column`） |
 | 校验 | **Pydantic v2** | 所有出入参必须校验 |
 | 数据库 | **SQLite**（`data/smartlearn.db`） | MVP 用 SQLite；**不使用 MySQL/PostgreSQL** |
-| 认证 | **JWT（python-jose）** | Bearer Token |
+| 认证 | **JWT HS256（标准库 `hmac` 实现）** | Bearer Token；算法锁死 HS256，先验签再解析 payload，无第三方 JWT 依赖 |
 | 密码 | **PBKDF2-HMAC-SHA256**（标准库 `hashlib`，260k 轮，16 字节随机盐） | 只存哈希，不存明文；哈希串自描述格式 `pbkdf2_sha256$<iter>$<salt>$<hash>`，P3 直接复用 P2 的 `app/core/security.py` |
 | 向量库 | **Chroma** | 本地持久化目录 `data/chroma` |
 | 文档解析 | **pypdf / python-docx / python-pptx / markdown** | 分别对应 PDF / Word / PPT / Markdown |
@@ -63,6 +63,17 @@ EMBEDDING_MODEL=     # 向量化模型名
 ```
 - 所有 LLM 调用统一走 OpenAI 兼容协议（`/v1/chat/completions` 与 `/v1/embeddings`）。
 - 切换模型只允许改 `.env`，代码内**禁止写死任何模型名、地址、Key**。
+
+**认证与运行环境变量（`.env`，禁止硬编码）**：
+```
+JWT_SECRET=            # 必填，缺失或仍为占位值时服务必须启动失败
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=10080
+DATABASE_URL=          # 可选，默认项目根 data/smartlearn.db
+CHROMA_DIR=            # 可选，默认项目根 data/chroma
+CORS_ORIGINS=          # 前端允许来源，JSON 数组
+```
+- `JWT_SECRET` 缺失或仍为占位值（如 `change-me-in-env`）时，应用启动必须直接抛出明确错误并退出，**禁止使用任何内置默认密钥继续运行**。
 
 > ⚠️ 与原需求文档的已知冲突（已按本文件裁决）：需求文档第 23 章建议 MySQL/PostgreSQL，第 21 章列出 Naive UI、第 24 章 Chroma。**本项目统一为 SQLite + Element Plus + Chroma**，不采用 MySQL/Naive UI。
 
@@ -137,7 +148,7 @@ smartlearn/
 │   │   ├── analytics/              # 学习分析引擎：统计、掌握度、报告
 │   │   ├── core/                   # 配置与安全
 │   │   │   ├── config.py           # 读取 .env（pydantic-settings）
-│   │   │   └── security.py         # JWT 签发/校验、bcrypt 哈希
+│   │   │   └── security.py         # JWT 签发/校验（HS256）、PBKDF2 密码哈希
 │   │   ├── db/                     # 会话与初始化
 │   │   │   ├── session.py          # engine / SessionLocal
 │   │   │   └── init_db.py          # 建表 + 种子数据
@@ -272,6 +283,7 @@ smartlearn/
 | grade | VARCHAR(20) | 是 | 年级，如「大二」 |
 | current_goal_type | VARCHAR(30) | 是 | 当前目标：考研/保研/就业/比赛 |
 | interest_directions | TEXT | 是 | 兴趣方向，JSON 数组字符串 |
+| daily_study_minutes | INTEGER | 否 | 每日可学习时长（分钟），范围 15–600，默认 60；供学习计划生成时估算每日可安排容量 |
 | created_at | DATETIME | 否 | 创建时间 |
 | updated_at | DATETIME | 否 | 更新时间 |
 

@@ -4,6 +4,10 @@
 Pydantic 序列化 + 404 语义），本模块以 TypeVar 参数化「ORM 模型 +
 出参模型」一处实现，消灭 30 份样板。
 
+P3 鉴权收编：两个助手均支持 ``filters`` 参数，调用方传入当前用户的
+数据隔离条件（如 ``Model.user_id == current_user.id``），列表与
+详情共用同一套过滤口径，越权访问与不存在统一返回 404 / 1005。
+
 分层契约（PROJECT_CONTEXT 第 4 章）：路由层经本助手访问 ORM，
 保持 ``api → services → models`` 单向依赖；本模块只做通用查询
 编排，禁止业务规则。
@@ -31,6 +35,7 @@ def paginate(
     page: int,
     page_size: int,
     order_by: Sequence[ColumnElement[Any]] | None = None,
+    filters: Sequence[ColumnElement[bool]] | None = None,
 ) -> dict[str, Any]:
     """分页查询并序列化为 ``{items, total, page, page_size}``。
 
@@ -41,13 +46,20 @@ def paginate(
         page: 页码（从 1 开始，调用前已由 PaginationParams 校验）。
         page_size: 每页条数（1~100）。
         order_by: 排序列序列；None 时按主键 id 升序。
+        filters: 数据隔离过滤条件（当前用户可见范围）；None 时不过滤
+            （仅限公开端点使用）。
 
     Returns:
         dict[str, Any]: 分页响应 data 结构，可直接被 JSON 化。
     """
-    total: int = db.scalar(select(func.count()).select_from(model)) or 0
+    base_stmt = select(model)
+    if filters:
+        base_stmt = base_stmt.where(*filters)
+    total: int = (
+        db.scalar(select(func.count()).select_from(base_stmt.subquery())) or 0
+    )
 
-    stmt = select(model)
+    stmt = base_stmt
     if order_by:
         stmt = stmt.order_by(*order_by)
     else:
@@ -67,22 +79,33 @@ def get_by_id_or_404(
     model: type[ModelT],
     obj_id: int,
     schema_class: type[SchemaT],
+    *,
+    filters: Sequence[ColumnElement[bool]] | None = None,
 ) -> dict[str, Any]:
-    """按主键查询单条记录并序列化；不存在时抛 404 业务异常。
+    """按主键查询单条记录并序列化；不存在或越权时抛 404 业务异常。
+
+    越权（记录存在但不满足 ``filters``）与不存在同口径返回
+    404 / 1005，防止资源 ID 枚举。
 
     Args:
         db: SQLAlchemy 会话。
         model: ORM 模型类。
         obj_id: 主键 id。
         schema_class: Pydantic 出参模型类。
+        filters: 数据隔离过滤条件（当前用户可见范围）；None 时不过滤
+            （仅限公开端点使用）。
 
     Returns:
         dict[str, Any]: 出参模型的 JSON dict。
 
     Raises:
-        BizException: code=1005 / HTTP 404，资源不存在时抛出。
+        BizException: code=1005 / HTTP 404，资源不存在或越权时抛出。
     """
-    obj = db.get(model, obj_id)
+    pk = inspect(model).primary_key[0]
+    stmt = select(model).where(pk == obj_id)
+    if filters:
+        stmt = stmt.where(*filters)
+    obj = db.scalar(stmt)
     if obj is None:
         raise BizException(
             CODE_NOT_FOUND,

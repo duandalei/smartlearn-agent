@@ -25,9 +25,63 @@ export interface HealthData {
   status: string
 }
 
-/** 登录用户信息（占位，待认证阶段对齐后端 schema）。 */
+/** 登录用户信息（对齐后端 UserOut，不含密码相关字段）。 */
 export interface UserInfo {
   id: number
   username: string
-  email?: string | null
+  email: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** 登录 / 注册入参（POST /auth/login、POST /auth/register）。 */
+export interface LoginPayload {
+  username: string
+  password: string
+}
+
+/** 注册入参（须与后端 RegisterIn 一致：用户名 ≥2 位，密码 ≥6 位）。 */
+export interface RegisterPayload {
+  username: string
+  password: string
+  confirm_password: string
+}
+
+/** 登录 / 注册成功响应的 data（对齐后端 AuthResult）。 */
+export interface AuthResult {
+  access_token: string
+  token_type: string
+  user: UserInfo
+}
+
+/** 用户学习档案（对齐后端 UserProfileOut）。 */
+export interface UserProfile {
+  id: number
+  user_id: number
+  name: string | null
+  school: string | null
+  major: string | null
+  grade: string | null
+  current_goal_type: string | null
+  interest_directions: string[]
+  daily_study_minutes: number
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * 档案更新入参（PUT /profile，字段级部分更新）。
+ *
+ * 后端语义：仅「已提交且非 null」的字段生效，未提交字段保持原值；
+ * 前端只需把要修改的字段放进对象即可。
+ */
+export interface UserProfileUpdatePayload {
+  name?: string
+  school?: string
+  major?: string
+  grade?: string
+  current_goal_type?: string
+  interest_directions?: string[]
+  daily_study_minutes?: number
 }

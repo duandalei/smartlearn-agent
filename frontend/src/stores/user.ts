@@ -8,7 +8,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import type { UserInfo } from '@/types'
+import type { AuthResult, UserInfo } from '@/types'
 
 /** token 在 localStorage 中的固定 key。 */
 export const TOKEN_KEY = 'smartlearn_token'
@@ -54,6 +54,19 @@ export const useUserStore = defineStore(
       return Boolean(token.value)
     }
 
+    /**
+     * 统一写入认证状态（登录与注册共用）。
+     *
+     * 后端注册成功返回的 token 结构与登录完全一致（P3 裁决），
+     * 两处复用同一存储方法，保证 token / userInfo 写入口径唯一。
+     *
+     * @param result 登录或注册接口返回的 AuthResult。
+     */
+    function applyAuthState(result: AuthResult): void {
+      setToken(result.access_token)
+      setUserInfo(result.user)
+    }
+
     /** 登出：清除 token 与用户信息。 */
     function logout(): void {
       token.value = ''
@@ -66,6 +79,7 @@ export const useUserStore = defineStore(
       userInfo,
       setToken,
       setUserInfo,
+      applyAuthState,
       isAuthenticated,
       logout,
     }

@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import api_router, health_router
 from app.core.config import settings
 from app.core.response import success
-from app.api.deps import get_db  # noqa: F401  (预留：供后续业务路由依赖注入)
+
 
 app: FastAPI = FastAPI(
     title=settings.APP_NAME,

@@ -352,6 +352,7 @@ def _seed_users(db: Session, now: datetime) -> User:
             grade="大二",
             current_goal_type="考研",
             interest_directions=["机器学习", "深度学习", "大模型应用"],
+            daily_study_minutes=120,
         )
     )
     return user

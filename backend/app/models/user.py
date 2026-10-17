@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -19,7 +19,7 @@ class User(TimestampMixin, Base):
         id: 主键，自增。
         username: 登录名，全局唯一。
         email: 邮箱，唯一（可空，SQLite 允许多个 NULL）。
-        hashed_password: bcrypt 哈希（$2b$ 前缀），禁止存明文。
+        hashed_password: 密码哈希（PBKDF2，见 core/security.py），禁止存明文。
         is_active: 是否启用，禁用后不可登录。
     """
 
@@ -33,7 +33,7 @@ class User(TimestampMixin, Base):
         String(120), unique=True, nullable=True, comment="邮箱，唯一"
     )
     hashed_password: Mapped[str] = mapped_column(
-        String(255), nullable=False, comment="bcrypt 哈希"
+        String(255), nullable=False, comment="密码哈希（PBKDF2）"
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, comment="是否启用"
@@ -88,9 +88,17 @@ class UserProfile(TimestampMixin, Base):
         grade: 年级，如「大二」。
         current_goal_type: 当前目标类型（考研/保研/就业/比赛，开放集合）。
         interest_directions: 兴趣方向，JSON 数组字符串（读出为 list[str]）。
+        daily_study_minutes: 每日可学习时长（分钟），15–600，默认 60；
+            供学习计划生成时估算每日可安排容量。
     """
 
     __tablename__ = "user_profiles"
+    __table_args__ = (
+        CheckConstraint(
+            "daily_study_minutes BETWEEN 15 AND 600",
+            name="ck_user_profiles_daily_study_minutes",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(
@@ -108,6 +116,12 @@ class UserProfile(TimestampMixin, Base):
     )
     interest_directions: Mapped[list[str]] = mapped_column(
         JSONListType, nullable=True, comment="兴趣方向，JSON 数组"
+    )
+    daily_study_minutes: Mapped[int] = mapped_column(
+        Integer,
+        default=60,
+        nullable=False,
+        comment="每日可学习时长（分钟），范围 15-600，默认 60",
     )
 
     user: Mapped[User] = relationship(back_populates="profile")
