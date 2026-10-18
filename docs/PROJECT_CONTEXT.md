@@ -56,12 +56,15 @@
 
 **LLM / Embedding 环境变量（`.env`，禁止硬编码）**：
 ```
-LLM_BASE_URL=        # OpenAI 兼容服务地址
-LLM_API_KEY=         # 密钥
-LLM_MODEL=           # 对话/推理模型名
-EMBEDDING_MODEL=     # 向量化模型名
+LLM_BASE_URL=            # 对话配置组：OpenAI 兼容服务地址
+LLM_API_KEY=             # 对话配置组：密钥
+LLM_MODEL=               # 对话配置组：对话/推理模型名
+EMBEDDING_BASE_URL=      # 向量化配置组：服务地址（空则回退 LLM_BASE_URL）
+EMBEDDING_API_KEY=       # 向量化配置组：密钥（空则回退 LLM_API_KEY）
+EMBEDDING_MODEL=         # 向量化配置组：模型名（空则回退 LLM_MODEL）
 ```
 - 所有 LLM 调用统一走 OpenAI 兼容协议（`/v1/chat/completions` 与 `/v1/embeddings`）。
+- 双配置组：对话与推理只走 `LLM_*`；向量化只走 `EMBEDDING_*` 生效配置（`EMBEDDING_BASE_URL / EMBEDDING_API_KEY / EMBEDDING_MODEL` 任一项为空时逐项回退对应 `LLM_*` 值，支持单服务商一键配置）。
 - 切换模型只允许改 `.env`，代码内**禁止写死任何模型名、地址、Key**。
 
 **认证与运行环境变量（`.env`，禁止硬编码）**：
@@ -231,6 +234,7 @@ smartlearn/
 ```
 - 请求参数统一为 `page`（从 1 开始，默认 1）、`page_size`（默认 10，上限 100）。
 - `total` 为满足条件的总记录数。
+- **实现约束（P4 发现，FastAPI 0.143.2）**：`Annotated[PaginationParams, Query()]` 查询参数模型**仅当它是该端点唯一 query 字段时才被展开**（`dependencies/utils.py` 的 `len(fields) == 1` 分支）。列表端点若还需其他标量 Query 参数（如 `status` 筛选），**不得**混用查询参数模型——模型不展开时会被误判为必填的单一 query 参数导致 422；此时分页参数应改为逐个标量声明（参照 `api/v1/goals.py` 的 `list_goals`，校验规则与 `PaginationParams` 完全一致）。仅有分页参数的列表端点继续沿用查询参数模型写法（全仓既有惯例）。
 
 ### 5.4 错误码约定
 
@@ -455,6 +459,7 @@ smartlearn/
 > - **关系**：`learning_records.mastery_level` 是**输入**（学生本次学习后的自评）；`knowledge_mastery.mastery_score` 是**输出**（系统聚合出的掌握度）。两者不是同一个东西，禁止混用。
 > - **聚合公式（必须写入代码注释）**：`mastery_score = clamp(旧 mastery_score × 0.7 + 本次自评 × 0.3, 0, 100)`。知识点首次出现时旧值取 0（例：首次自评 60 → 0×0.7 + 60×0.3 = 18）。
 > - **错题扣分**：该知识点下每有一道错题，−3 分，下限 0。
+> - **薄弱点过滤（P4 定稿）**：薄弱点分析与 Dashboard 展示中，必须排除「`source='goal_breakdown'` 且 `mastery_score=0`」的知识点。这类点由目标拆解生成、尚未真正学习，不得列为薄弱知识点。一旦该点通过学习记录或自评被更新过，即恢复正常参与排序。
 > - **时间衰减**：距 `updated_at` 超过 30 天的知识点，每满 7 天 −2 分，下限 0。
 > - **触发时机**：新增/修改/删除学习记录后立即重算该记录涉及的知识点；每日首次访问 Dashboard 时对当前用户跑一次全量衰减检查。
 > - **全量重算**：必须提供 `recalculate_all(user_id)` 函数，供数据修复与答辩演示使用。

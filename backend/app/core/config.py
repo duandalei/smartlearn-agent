@@ -5,7 +5,9 @@
 切换 LLM / Embedding 只允许修改 ``.env``。
 
 变量清单（与 PROJECT_CONTEXT 第 2 章一致）：
-    LLM_BASE_URL / LLM_API_KEY / LLM_MODEL / EMBEDDING_MODEL
+    LLM_BASE_URL / LLM_API_KEY / LLM_MODEL（对话配置组）
+    EMBEDDING_BASE_URL / EMBEDDING_API_KEY / EMBEDDING_MODEL（向量化配置组，
+    任一项为空时逐项回退对应 LLM_* 值）
     JWT_SECRET / DATABASE_URL / CHROMA_DIR
 """
 
@@ -48,10 +50,12 @@ class Settings(BaseSettings):
     （大小写不敏感）。未显式配置时使用下方默认值，保证开箱即可启动。
 
     Attributes:
-        LLM_BASE_URL: OpenAI 兼容服务地址，用于对话与向量化。
-        LLM_API_KEY: LLM 服务密钥。
-        LLM_MODEL: 对话 / 推理模型名。
-        EMBEDDING_MODEL: 向量化模型名。
+        LLM_BASE_URL: OpenAI 兼容服务地址（对话配置组）。
+        LLM_API_KEY: LLM 服务密钥（对话配置组）。
+        LLM_MODEL: 对话 / 推理模型名（对话配置组）。
+        EMBEDDING_BASE_URL: 向量化服务地址（向量化配置组，空则回退 LLM_BASE_URL）。
+        EMBEDDING_API_KEY: 向量化服务密钥（向量化配置组，空则回退 LLM_API_KEY）。
+        EMBEDDING_MODEL: 向量化模型名（向量化配置组，空则回退 LLM_MODEL）。
         JWT_SECRET: JWT 签发与校验密钥。
         JWT_ALGORITHM: JWT 签名算法。
         JWT_EXPIRE_MINUTES: Token 有效期（分钟）。
@@ -74,10 +78,12 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = True
 
-    # ---- LLM / Embedding --------------------------------------------------
+    # ---- LLM / Embedding（双配置组：对话走 LLM_*，向量化走 EMBEDDING_*）----
     LLM_BASE_URL: str = ""
     LLM_API_KEY: str = ""
     LLM_MODEL: str = ""
+    EMBEDDING_BASE_URL: str = ""
+    EMBEDDING_API_KEY: str = ""
     EMBEDDING_MODEL: str = ""
 
     # ---- 安全 -------------------------------------------------------------
@@ -102,6 +108,38 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+
+    # ---- 向量化生效配置（逐项回退，只读派生属性）--------------------------
+    # 支持单服务商一键配置：EMBEDDING_* 任一项为空时回退对应 LLM_* 值。
+    # 回退 debug 日志由 services/llm.py 在构造向量化客户端时输出，
+    # config 层保持纯净、不打印任何日志与密钥明文。
+
+    @property
+    def embedding_base_url_effective(self) -> str:
+        """向量化服务地址（EMBEDDING_BASE_URL 为空时回退 LLM_BASE_URL）。
+
+        Returns:
+            str: 向量化实际使用的服务地址。
+        """
+        return self.EMBEDDING_BASE_URL.strip() or self.LLM_BASE_URL.strip()
+
+    @property
+    def embedding_api_key_effective(self) -> str:
+        """向量化服务密钥（EMBEDDING_API_KEY 为空时回退 LLM_API_KEY）。
+
+        Returns:
+            str: 向量化实际使用的密钥（不打印、不落日志）。
+        """
+        return self.EMBEDDING_API_KEY.strip() or self.LLM_API_KEY.strip()
+
+    @property
+    def embedding_model_effective(self) -> str:
+        """向量化模型名（EMBEDDING_MODEL 为空时回退 LLM_MODEL）。
+
+        Returns:
+            str: 向量化实际使用的模型名。
+        """
+        return self.EMBEDDING_MODEL.strip() or self.LLM_MODEL.strip()
 
     @model_validator(mode="after")
     def _validate_jwt_secret(self) -> "Settings":
