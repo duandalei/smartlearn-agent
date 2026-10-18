@@ -85,3 +85,67 @@ export interface UserProfileUpdatePayload {
   interest_directions?: string[]
   daily_study_minutes?: number
 }
+// ---------------------------------------------------------------------------
+// 学习目标（P4）
+// ---------------------------------------------------------------------------
+
+/** 目标状态（对齐后端 GoalStatus 枚举）。 */
+export type GoalStatus = 'active' | 'completed' | 'archived'
+
+/** 表单可选的目标类型（5 枚举；历史数据可能为其他字符串）。 */
+export type GoalTypeOption = '考研' | '保研' | '就业' | '比赛' | '技能提升'
+
+/** 知识树节点（对齐后端 RoadmapNode；children 空数组 = 叶子）。 */
+export interface RoadmapNode {
+  name: string
+  children: RoadmapNode[]
+}
+
+/** 学习目标（对齐后端 GoalOut；roadmap 可空 = 从未拆解）。 */
+export interface Goal {
+  id: number
+  user_id: number
+  title: string
+  goal_type: string | null // 读侧宽松：兼容历史值；写侧由表单限制 5 枚举
+  description: string | null
+  start_date: string | null // 'YYYY-MM-DD'
+  end_date: string | null
+  status: GoalStatus
+  roadmap: RoadmapNode | null
+  roadmap_updated_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** 知识树查询 / 拆解出参（对齐后端 RoadmapOut）。 */
+export interface GoalRoadmap {
+  goal_id: number
+  roadmap: RoadmapNode | null
+  roadmap_updated_at: string | null
+}
+
+/** 目标列表查询参数。 */
+export interface GoalListQuery {
+  page?: number
+  page_size?: number
+  status?: GoalStatus
+}
+
+/** 新建目标入参。 */
+export interface GoalCreatePayload {
+  title: string
+  goal_type?: GoalTypeOption
+  description?: string
+  start_date?: string
+  end_date?: string
+}
+
+/** 编辑目标入参（部分更新：仅提交要修改的字段）。 */
+export interface GoalUpdatePayload {
+  title?: string
+  goal_type?: GoalTypeOption
+  description?: string
+  start_date?: string
+  end_date?: string
+  status?: GoalStatus
+}
