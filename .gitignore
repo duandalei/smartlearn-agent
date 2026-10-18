@@ -44,3 +44,6 @@ data/*
 *.log
 # ---- 码道本地配置 ----
 .codeartsdoer/
+
+# ---- 临时验证产物（验证脚本运行期生成，可随时重建）----
+backend/tmp_verify/
