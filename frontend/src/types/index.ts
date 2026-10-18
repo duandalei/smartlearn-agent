@@ -149,3 +149,95 @@ export interface GoalUpdatePayload {
   end_date?: string
   status?: GoalStatus
 }
+// ---------------------------------------------------------------------------
+// 学习任务（P5）
+// ---------------------------------------------------------------------------
+
+/** 任务状态（对齐后端 TaskStatus 枚举，spec 锁定四值）。 */
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'review'
+
+/** 优先级（对齐后端 Priority 枚举）。 */
+export type TaskPriority = 'low' | 'medium' | 'high'
+
+/** 学习任务（对齐后端 TaskOut；knowledge_points 永为数组，spec 4.5.3）。 */
+export interface Task {
+  id: number
+  user_id: number
+  goal_id: number | null
+  course_id: number | null
+  title: string
+  description: string | null
+  knowledge_points: string[]
+  priority: TaskPriority
+  estimated_minutes: number | null
+  actual_minutes: number | null
+  deadline: string | null // ISO 时间戳
+  scheduled_date: string | null // 'YYYY-MM-DD'
+  status: TaskStatus
+  source: 'manual' | 'agent'
+  created_at: string
+  updated_at: string
+  completed_at: string | null
+}
+
+/** 任务列表查询参数（与后端 8 个标量 query 一一对应）。 */
+export interface TaskListQuery {
+  page?: number
+  page_size?: number
+  status?: TaskStatus
+  priority?: TaskPriority
+  course_id?: number
+  knowledge_point?: string
+  overdue?: boolean
+  keyword?: string
+}
+
+/** 新建任务入参（无 status / scheduled_date，对齐 TaskCreate）。 */
+export interface TaskCreatePayload {
+  title: string
+  description?: string
+  goal_id?: number
+  course_id?: number
+  knowledge_points?: string[]
+  priority?: TaskPriority
+  estimated_minutes?: number
+  deadline?: string
+}
+
+/** 编辑任务入参（部分更新；额外含 actual_minutes / scheduled_date）。 */
+export interface TaskUpdatePayload extends Partial<TaskCreatePayload> {
+  actual_minutes?: number
+  scheduled_date?: string
+}
+
+/** 状态流入参（PATCH /tasks/{id}/status）。 */
+export interface TaskStatusPayload {
+  status: TaskStatus
+}
+
+/** 看板数据（固定四键，列序 = 状态机流转序）。 */
+export type TaskBoardData = Record<TaskStatus, Task[]>
+
+/** 任务统计（对齐后端 TaskStatsOut，字段全 snake_case 直传）。 */
+export interface TaskStats {
+  total: number
+  status_counts: Record<TaskStatus, number>
+  overdue_count: number
+  weekly_completion_rate: number
+  today_todo_count: number
+}
+
+// ---------------------------------------------------------------------------
+// 课程（P2 只读接口消费，P5 课程下拉数据源）
+// ---------------------------------------------------------------------------
+
+/** 课程（对齐后端 CourseOut）。 */
+export interface Course {
+  id: number
+  user_id: number
+  name: string
+  description: string | null
+  teacher: string | null
+  semester: string | null
+  created_at: string
+}
