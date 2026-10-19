@@ -30,6 +30,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.normalize import clean_roadmap_tree
 from app.core.response import (
     CODE_BIZ_CONFLICT,
     CODE_INTERNAL_ERROR,
@@ -318,7 +319,12 @@ async def _call_and_parse(goal_id: int, ctx: _GoalContext) -> dict:
             text = await llm.chat(messages)
             if attempt == 1:
                 first_output = text
-            return _truncate_tree(_parse_roadmap(text))
+            try:
+                # 解析后、截断前清洗节点名（裁定④，详见 core/normalize.py），纯空白名转 _ParseFailed 走重试兜底。
+                tree = clean_roadmap_tree(_parse_roadmap(text))
+            except ValueError as exc:
+                raise _ParseFailed(str(exc)) from None
+            return _truncate_tree(tree)
         except _ParseFailed as exc:
             if attempt == 1:
                 truncated = first_output[:_FIRST_OUTPUT_MAX_CHARS]

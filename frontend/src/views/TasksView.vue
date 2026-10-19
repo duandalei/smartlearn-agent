@@ -32,6 +32,7 @@ import type {
   TaskStats,
   TaskStatus,
 } from '@/types'
+import { normalizeKnowledgePoints } from '@/utils/knowledge'
 import {
   TASK_STATUS_LABELS,
   formatDeadline,
@@ -77,7 +78,7 @@ const boardRef = ref<InstanceType<typeof TaskBoard> | null>(null)
 const knowledgeOptions = computed<string[]>(() => {
   const set = new Set<string>()
   for (const t of tasks.value) {
-    for (const k of t.knowledge_points) set.add(k)
+    for (const k of normalizeKnowledgePoints(t.knowledge_points)) set.add(k)
   }
   return [...set].sort()
 })
@@ -382,9 +383,9 @@ const overdueOptions: { value: '' | 'true' | 'false'; label: string }[] = [
           <el-table-column prop="title" label="名称" min-width="180" show-overflow-tooltip />
           <el-table-column label="知识点" min-width="160">
             <template #default="{ row }">
-              <template v-if="row.knowledge_points.length > 0">
+              <template v-if="normalizeKnowledgePoints(row.knowledge_points).length > 0">
                 <el-tag
-                  v-for="k in row.knowledge_points.slice(0, 3)"
+                  v-for="k in normalizeKnowledgePoints(row.knowledge_points).slice(0, 3)"
                   :key="k"
                   size="small"
                   type="info"
@@ -393,8 +394,8 @@ const overdueOptions: { value: '' | 'true' | 'false'; label: string }[] = [
                 >
                   {{ k }}
                 </el-tag>
-                <el-tag v-if="row.knowledge_points.length > 3" size="small" type="info" effect="plain">
-                  +{{ row.knowledge_points.length - 3 }}
+                <el-tag v-if="normalizeKnowledgePoints(row.knowledge_points).length > 3" size="small" type="info" effect="plain">
+                  +{{ normalizeKnowledgePoints(row.knowledge_points).length - 3 }}
                 </el-tag>
               </template>
               <span v-else>—</span>

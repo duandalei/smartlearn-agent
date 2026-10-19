@@ -15,6 +15,7 @@ import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 
 import { createTask, updateTask } from '@/api/task'
+import { normalizeKnowledgePoints } from '@/utils/knowledge'
 import type {
   Course,
   Task,
@@ -141,7 +142,8 @@ function buildCreatePayload(): TaskCreatePayload {
   const payload: TaskCreatePayload = { title: form.title.trim() }
   if (form.description.trim()) payload.description = form.description.trim()
   if (typeof form.course_id === 'number') payload.course_id = form.course_id
-  if (form.knowledge_points.length > 0) payload.knowledge_points = [...form.knowledge_points]
+  const kps = normalizeKnowledgePoints(form.knowledge_points)
+  if (kps.length > 0) payload.knowledge_points = kps
   if (form.priority !== 'medium') payload.priority = form.priority
   if (typeof form.estimated_minutes === 'number') payload.estimated_minutes = form.estimated_minutes
   const deadlineIso = dateToIso(form.deadline)
@@ -167,7 +169,7 @@ function buildUpdatePayload(): TaskUpdatePayload {
     payload.course_id = form.course_id
   }
 
-  const kps = form.knowledge_points.filter((k) => k.trim() !== '')
+  const kps = normalizeKnowledgePoints(form.knowledge_points)
   if (kps.length !== t.knowledge_points.length || kps.some((k, i) => k !== t.knowledge_points[i])) {
     payload.knowledge_points = kps
   }

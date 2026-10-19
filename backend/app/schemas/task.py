@@ -19,6 +19,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.core.normalize import normalize_knowledge_points
 from app.models.enums import Priority, TaskStatus
 
 # ---------------------------------------------------------------------------
@@ -55,23 +56,23 @@ def _reject_forbidden(data: Any) -> Any:
 
 
 def _normalize_knowledge_points(v: list[str] | None) -> list[str] | None:
-    """知识点标签规范化：每项 strip 后 1~100 字符 + 去重保序。
+    """知识点标签规范化（委托 ``app.core.normalize`` 数组管线）。
+
+    strip → 空白判错 → 按 strip 后值去重保序 → 长度校验（strip 后
+    1~100），返回值即唯一落库来源。原实现与 record.py 为复制粘贴的
+    同构缺陷（校验 strip 值却返回原值数组），本修复收敛到公共模块
+    单点实现。
 
     Args:
         v: 知识点数组（None 表示未提交，原样放行交由部分更新语义处理）。
 
     Returns:
-        list[str] | None: 去重保序后的数组。
+        list[str] | None: 清洗去重后的数组。
 
     Raises:
-        ValueError: 元素为空串 / 超长时抛出。
+        ValueError: 元素为纯空白 / 超长时抛出。
     """
-    if v is None:
-        return v
-    for item in v:
-        if not (1 <= len(item.strip()) <= 100):
-            raise ValueError("知识点名称长度须为 1~100 字符")
-    return list(dict.fromkeys(v))
+    return normalize_knowledge_points(v)
 
 
 class TaskOut(BaseModel):

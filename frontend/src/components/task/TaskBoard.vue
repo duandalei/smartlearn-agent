@@ -19,6 +19,7 @@ import { onMounted, reactive, ref } from 'vue'
 
 import { fetchBoard, transitionTaskStatus } from '@/api/task'
 import type { Task, TaskBoardData, TaskStatus } from '@/types'
+import { normalizeKnowledgePoints } from '@/utils/knowledge'
 import {
   BOARD_COLUMNS,
   TASK_STATUS_LABELS,
@@ -174,9 +175,9 @@ defineExpose({ reload })
               <template v-if="isTaskOverdue(t)">（已逾期）</template>
             </span>
           </div>
-          <div v-if="t.knowledge_points.length > 0" class="card-kps">
+          <div v-if="normalizeKnowledgePoints(t.knowledge_points).length > 0" class="card-kps">
             <el-tag
-              v-for="k in t.knowledge_points.slice(0, 3)"
+              v-for="k in normalizeKnowledgePoints(t.knowledge_points).slice(0, 3)"
               :key="k"
               size="small"
               type="info"
@@ -185,12 +186,12 @@ defineExpose({ reload })
               {{ k }}
             </el-tag>
             <el-tag
-              v-if="t.knowledge_points.length > 3"
+              v-if="normalizeKnowledgePoints(t.knowledge_points).length > 3"
               size="small"
               type="info"
               effect="plain"
             >
-              +{{ t.knowledge_points.length - 3 }}
+              +{{ normalizeKnowledgePoints(t.knowledge_points).length - 3 }}
             </el-tag>
           </div>
         </div>

@@ -241,3 +241,96 @@ export interface Course {
   semester: string | null
   created_at: string
 }
+// ---------------------------------------------------------------------------
+// 学习记录（P6）
+// ---------------------------------------------------------------------------
+
+/**
+ * 学习记录（对齐后端 RecordOut）。
+ *
+ * mastery_level 是学生本次学习的自评（聚合输入，null = 本次不参与
+ * 掌握度聚合），与 knowledge_mastery.mastery_score（聚合输出）语义不同。
+ */
+export interface LearningRecord {
+  id: number
+  user_id: number
+  task_id: number | null
+  course_id: number | null
+  content: string
+  duration_minutes: number
+  achievement: string | null
+  problems: string | null
+  knowledge_points: string[] // JSONListType 读出语义：永为数组
+  mastery_level: number | null
+  study_date: string // 'YYYY-MM-DD'（可补记历史日期）
+  created_at: string
+}
+
+/** 记录列表查询参数（与后端 6 个标量 query 一一对应）。 */
+export interface RecordListQuery {
+  page?: number
+  page_size?: number
+  start_date?: string
+  end_date?: string
+  course_id?: number
+  knowledge_point?: string
+}
+
+/** 新建记录入参（对齐后端 RecordCreate；study_date 不得晚于北京今天）。 */
+export interface RecordCreatePayload {
+  content: string
+  duration_minutes: number
+  study_date: string
+  mastery_level?: number | null
+  knowledge_points?: string[]
+  task_id?: number | null
+  course_id?: number | null
+  achievement?: string | null
+  problems?: string | null
+}
+
+/**
+ * 编辑记录入参（对齐后端 RecordUpdate，提交即生效含显式 null）。
+ *
+ * 与 TaskUpdate 的「传 null 不清空」不同：mastery_level 置 null =
+ * 退出掌握度聚合、task_id / course_id 置 null = 解除关联。
+ */
+export interface RecordUpdatePayload {
+  content?: string
+  duration_minutes?: number
+  study_date?: string
+  mastery_level?: number | null
+  knowledge_points?: string[] | null
+  task_id?: number | null
+  course_id?: number | null
+  achievement?: string | null
+  problems?: string | null
+}
+
+/** 时间线单日（对齐后端 TimelineItemOut，无记录的天补 0）。 */
+export interface TimelineItem {
+  date: string
+  minutes: number
+}
+
+/** 时间线出参（对齐后端 TimelineOut，恰 days 条、date 升序）。 */
+export interface TimelineData {
+  days: number
+  start_date: string
+  end_date: string
+  items: TimelineItem[]
+}
+
+/** 学习统计（对齐后端 RecordStatsOut，三值全部后端计算）。 */
+export interface RecordStats {
+  weekly_minutes: number
+  streak_days: number
+  total_count: number
+}
+
+/** 记录按日期分组的渲染结构（utils/record.ts groupRecordsByDate 产物）。 */
+export interface RecordDateGroup {
+  date: string
+  title: string // 今天 / 昨天 / YYYY-MM-DD
+  records: LearningRecord[]
+}

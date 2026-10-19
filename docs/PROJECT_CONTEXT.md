@@ -460,7 +460,7 @@ smartlearn/
 > - **聚合公式（必须写入代码注释）**：`mastery_score = clamp(旧 mastery_score × 0.7 + 本次自评 × 0.3, 0, 100)`。知识点首次出现时旧值取 0（例：首次自评 60 → 0×0.7 + 60×0.3 = 18）。
 > - **错题扣分**：该知识点下每有一道错题，−3 分，下限 0。
 > - **薄弱点过滤（P4 定稿）**：薄弱点分析与 Dashboard 展示中，必须排除「`source='goal_breakdown'` 且 `mastery_score=0`」的知识点。这类点由目标拆解生成、尚未真正学习，不得列为薄弱知识点。一旦该点通过学习记录或自评被更新过，即恢复正常参与排序。
-> - **时间衰减**：距 `updated_at` 超过 30 天的知识点，每满 7 天 −2 分，下限 0。
+> - **时间衰减**：距最近一次学习记录超过 30 天的知识点，每满 7 天 −2 分，下限 0。衰减基准为该用户该知识点最后一条学习记录的 `study_date`（`max(study_date)`，含未自评记录），**禁止**以 `updated_at` 为基准——掌握度重放本身会刷新 `updated_at`，以其为基准会导致全量重算不幂等；无任何学习记录的知识点（零分待学点）不做衰减。`updated_at` 仅表示最近更新时间。
 > - **触发时机**：新增/修改/删除学习记录后立即重算该记录涉及的知识点；每日首次访问 Dashboard 时对当前用户跑一次全量衰减检查。
 > - **全量重算**：必须提供 `recalculate_all(user_id)` 函数，供数据修复与答辩演示使用。
 > - **MVP 采集源收窄为 3 个**：学习记录自评（主）、错题（扣分）、目标拆解（仅初始化 0 分）。`source` 枚举保留 `quiz` 值但 MVP 不写入，标注「V2 接入」。
@@ -532,7 +532,7 @@ smartlearn/
 | Profile | `GET/PUT /api/v1/profile` |
 | Goals | `GET/POST /api/v1/goals`、`GET/PUT/DELETE /api/v1/goals/{id}`、`POST /api/v1/goals/{id}/breakdown`（AI 拆解） |
 | Tasks | `GET/POST /api/v1/tasks`、`GET/PUT/DELETE /api/v1/tasks/{id}`、`PATCH /api/v1/tasks/{id}/status` |
-| Learning Records | `GET/POST /api/v1/records`、`GET/PUT/DELETE /api/v1/records/{id}` |
+| Learning Records | `GET/POST /api/v1/records`、`GET/PUT/DELETE /api/v1/records/{id}`、`GET /api/v1/records/timeline`（按天聚合时长，无记录日补 0，供图表）、`GET /api/v1/records/stats`（本周学习时长 / 连续学习天数 / 记录条数） |
 | Knowledge Base | `POST /api/v1/knowledge/upload`、`GET /api/v1/knowledge/items`、`DELETE /api/v1/knowledge/items/{id}`、`POST /api/v1/knowledge/search` |
 | AI Agent | `POST /api/v1/agent/conversations`、`GET /api/v1/agent/conversations`、`PATCH /api/v1/agent/conversations/{id}`（重命名）、`DELETE /api/v1/agent/conversations/{id}`（删除）、`GET /api/v1/agent/conversations/{id}/messages`、`POST /api/v1/agent/chat`（SSE 流式） |
 | Plan（`/plans`） | `GET /api/v1/plans`（历史版本列表）、`GET /api/v1/plans/current`（当前 active 计划 + 条目，供周视图课表）、`POST /api/v1/plans/generate`（生成新版本）、`POST /api/v1/plans/{id}/adjust`（调整并生成新版本，`parent_plan_id` 指向原版本，写入 `adjust_reason`）、`GET /api/v1/plans/{id}/diff`（对比 `parent_plan_id`，展示「原计划 → 新计划」+ 调整原因） |
