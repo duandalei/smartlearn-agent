@@ -787,12 +787,12 @@ def _seed_knowledge(db: Session) -> None:
         db: 数据库会话。
     """
     items: list[tuple[str, str, str, int]] = [
-        ("机器学习核心概念速览", "pdf", "data/public_kb/ml_basics.pdf", 2),
+        ("机器学习核心概念速览", "md", "data/public_kb/ml_basics.md", 2),
         ("线性代数要点笔记：特征值与矩阵分解", "md",
          "data/public_kb/linear_algebra_notes.md", 1),
-        ("概率论与数理统计公式表", "pdf",
-         "data/public_kb/probability_formulas.pdf", 1),
-        ("数据结构常见考点速查", "txt", "data/public_kb/ds_cheatsheet.txt", 0),
+        ("概率论与数理统计公式表", "md",
+         "data/public_kb/probability_formulas.md", 1),
+        ("数据结构常见考点速查", "md", "data/public_kb/ds_cheatsheet.md", 0),
     ]
     type_map = {
         "pdf": KnowledgeSourceType.PDF,
