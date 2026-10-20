@@ -29,6 +29,7 @@ from app.api.v1.knowledge import router as knowledge_router
 from app.api.v1.knowledge_chunks import router as knowledge_chunks_router
 from app.api.v1.mistakes import router as mistakes_router
 from app.api.v1.knowledge_mastery import router as knowledge_mastery_router
+from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.agent import router as agent_router
 from app.api.v1.agent_messages import router as agent_messages_router
 from app.api.v1.reports import router as reports_router
@@ -49,6 +50,7 @@ api_router.include_router(knowledge_router)
 api_router.include_router(knowledge_chunks_router)
 api_router.include_router(mistakes_router)
 api_router.include_router(knowledge_mastery_router)
+api_router.include_router(dashboard_router)
 api_router.include_router(agent_router)
 api_router.include_router(agent_messages_router)
 api_router.include_router(reports_router)

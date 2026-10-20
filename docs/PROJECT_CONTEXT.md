@@ -528,7 +528,7 @@ smartlearn/
 | 页面 | 主要接口 |
 |---|---|
 | Login | `POST /api/v1/auth/register`、`POST /api/v1/auth/login`、`GET /api/v1/auth/me` |
-| Dashboard | `GET /api/v1/dashboard/overview`、`GET /api/v1/dashboard/trend`、`GET /api/v1/dashboard/mastery`、`GET /api/v1/dashboard/suggestions`、`GET /api/v1/plans/current`（「本周计划」摘要卡片） |
+| Dashboard | `GET /api/v1/dashboard/overview`（七指标总览，触发每日衰减检查）、`GET /api/v1/dashboard/trend?days=N`（趋势序列 + slope + `risk_alert` 风险预警，预警并入 trend 响应、不设独立 `/dashboard/risk` 端点）、`GET /api/v1/dashboard/mastery`、`GET /api/v1/dashboard/weakness`、`GET /api/v1/dashboard/advice`（三规则建议）；`GET /api/v1/plans/current`（「本周计划」摘要卡片，端点保留，后续阶段接入） |
 | Profile | `GET/PUT /api/v1/profile` |
 | Goals | `GET/POST /api/v1/goals`、`GET/PUT/DELETE /api/v1/goals/{id}`、`POST /api/v1/goals/{id}/breakdown`（AI 拆解） |
 | Tasks | `GET/POST /api/v1/tasks`、`GET/PUT/DELETE /api/v1/tasks/{id}`、`PATCH /api/v1/tasks/{id}/status` |

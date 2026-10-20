@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date, datetime
 
 from sqlalchemy import func, select
@@ -30,6 +31,8 @@ from app.models.mastery import KnowledgeMastery
 from app.models.mistake import Mistake
 from app.models.record import LearningRecord
 from app.services.task import TZ_BEIJING
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # 公式参数（唯一数据源，禁止散落硬编码）
@@ -46,6 +49,10 @@ DECAY_GRACE_DAYS: int = 30
 DECAY_STEP_DAYS: int = 7
 #: 每个衰减步长的扣分数。
 DECAY_STEP_PENALTY: int = 2
+
+#: 每日衰减检查的进程内判重标记（user_id → 最近已检查的北京日期）。
+#: 生命周期 = 进程生命周期；仅成功后写入，失败不标记（同日可重试）。
+_daily_decay_checked: dict[int, date] = {}
 
 
 def _replay_one_kp(
@@ -264,3 +271,59 @@ def recalculate_all(db: Session, user_id: int) -> dict:
         _replay_one_kp(db, user_id, kp, now)
     db.commit()
     return {"user_id": user_id, "replayed": len(kp_set)}
+
+def run_daily_decay_check(db: Session, user_id: int) -> bool:
+    """每日掌握度衰减检查（Dashboard overview 请求前触发，每用户每天最多一次）。
+
+    取舍一 · 重算范围：种子掌握度值（10 条）是初始化脚本直接写入的，
+    未经过公式重放；若每日访问都做全量重算，会把这些值整体改写
+    （如概率论 40 → 约 32、动态规划 45 → 19.5），推翻演示基线。
+    因此衰减检查只作用于「衰减值 > 0」的知识点（last_study 距今
+    > 30 天）。这是演示种子数据与公式计算值并存的已知差异，P13 的
+    演示数据重置脚本会统一处理。
+
+    取舍二 · 判重方式：判重使用进程内模块级字典（user_id → 日期），
+    不建持久化表——为「今天检查过没有」的幂等标记新增一张表，代价
+    与收益不成比例（契约 §6 表清单、init_db 建表、models 导出、
+    库版本排查点全部受牵连）。多 worker 部署时各进程独立判断
+    （每 worker 各执行一次，重算幂等无正确性风险）；本项目为单进程
+    uvicorn 不受影响；未来若上多 worker，再升级为持久化标记。
+
+    Args:
+        db: 数据库会话（自带事务：候选重放后单次 commit）。
+        user_id: 当前用户 id。
+
+    Returns:
+        bool: 本次是否实际执行了重算（今日已检查或失败均返回 False）。
+    """
+    today = utc_now().astimezone(TZ_BEIJING).date()
+    if _daily_decay_checked.get(user_id) == today:
+        return False
+    try:
+        rows = db.execute(
+            select(
+                LearningRecord.study_date, LearningRecord.knowledge_points
+            ).where(LearningRecord.user_id == user_id)
+        ).all()
+        last_study: dict[str, date] = {}
+        for study_date, kps in rows:
+            for kp in kps or []:
+                prev = last_study.get(kp)
+                if prev is None or study_date > prev:
+                    last_study[kp] = study_date
+        candidates = {
+            kp
+            for kp, d in last_study.items()
+            if (today - d).days > DECAY_GRACE_DAYS
+        }
+        if candidates:
+            replay_knowledge_points(db, user_id, candidates)
+        db.commit()
+        _daily_decay_checked[user_id] = today
+        return True
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "每日衰减检查失败 user_id=%s", user_id, exc_info=True
+        )
+        return False

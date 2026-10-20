@@ -333,4 +333,80 @@ export interface RecordDateGroup {
   date: string
   title: string // 今天 / 昨天 / YYYY-MM-DD
   records: LearningRecord[]
+}// ---------------------------------------------------------------------------
+// 学习分析看板（P7）
+// ---------------------------------------------------------------------------
+
+/** 指标总览（对齐后端 OverviewOut 七指标，全部后端计算直传）。 */
+export interface OverviewData {
+  total_minutes: number
+  task_completion_rate: number
+  avg_mastery: number
+  streak_days: number
+  total_record_count: number
+  avg_session_minutes: number
+  overdue_task_count: number
+}
+
+/** 趋势序列单日（date 为 'YYYY-MM-DD'，后端补零直传，前端零解析）。 */
+export interface TrendItem {
+  date: string
+  minutes: number
+}
+
+/** 学习风险预警（未触发时整体为 null）。 */
+export interface RiskAlert {
+  level: string
+  title: string
+  message: string
+  suggestion: string
+}
+
+/** 学习时间趋势出参（对齐后端 TrendOut；risk_alert 与 days 参数解耦）。 */
+export interface TrendData {
+  days: number
+  start_date: string
+  end_date: string
+  items: TrendItem[]
+  slope: number
+  risk_alert: RiskAlert | null
+}
+
+/** 掌握度单项（对齐后端 MasteryItemOut）。 */
+export interface MasteryItem {
+  knowledge_point: string
+  mastery_score: number
+}
+
+/** 掌握度出参（对齐后端 MasteryOut，按 mastery_score 升序）。 */
+export interface MasteryData {
+  items: MasteryItem[]
+}
+
+/** 薄弱点单项（对齐后端 WeaknessItemOut，recent_count 为近 30 天出现频次）。 */
+export interface WeaknessItem {
+  knowledge_point: string
+  mastery_score: number
+  recent_count: number
+  advice: string
+}
+
+/** 薄弱点出参（对齐后端 WeaknessOut，Top5 已由后端排定）。 */
+export interface WeaknessData {
+  items: WeaknessItem[]
+}
+
+/** 建议类型（对齐后端三规则顺序：overdue / weakness / streak）。 */
+export type AdviceType = 'overdue' | 'weakness' | 'streak'
+
+/** 建议单项（对齐后端 AdviceItemOut）。 */
+export interface AdviceItem {
+  type: AdviceType
+  title: string
+  content: string
+}
+
+/** 建议出参（对齐后端 AdviceOut，命中几条返回几条）。 */
+export interface AdviceData {
+  items: AdviceItem[]
 }
