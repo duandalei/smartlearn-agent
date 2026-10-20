@@ -21,6 +21,9 @@ SQLAlchemy>=2.0,<3.0
 
 # ---- RAG：向量库与文档解析 ----
 chromadb>=0.5,<1.0
+# chromadb 0.6.x 与 posthog 7.x 接口不兼容（capture() 签名变化），
+# 每次 Chroma 操作都会向 stderr 打印 telemetry 报错；锁定 3.x 规避。
+posthog<4
 pypdf>=4.2,<6.0
 python-docx>=1.1,<2.0
 python-pptx>=0.6.23,<2.0

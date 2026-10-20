@@ -409,6 +409,7 @@ smartlearn/
 | status | VARCHAR(20) | 否 | pending/parsing/indexed/failed，默认 pending |
 | error_msg | TEXT | 是 | 解析或向量化失败时的错误原因，`status=failed` 时必填 |
 | chunk_count | INTEGER | 否 | 切分后的分块数，默认 0 |
+| file_size | INTEGER | 是 | 原件字节数，列表展示文件大小用；上传受理时写入，存量公共文档由应用启动迁移回填 |
 | created_at | DATETIME | 否 | 创建时间 |
 | updated_at | DATETIME | 否 | 更新时间 |
 
@@ -425,6 +426,7 @@ smartlearn/
 | user_id | INTEGER | 是 | 外键 users.id，冗余便于按用户过滤（public 可空） |
 | chunk_index | INTEGER | 否 | 分块序号，从 0 开始 |
 | content | TEXT | 否 | 分块文本内容 |
+| heading_path | TEXT | 是 | 分块所属标题路径（如「机器学习基础 > Transformer > 多头注意力」），用于检索结果定位到原文章节 |
 | embedding_id | VARCHAR(100) | 是 | Chroma 中的向量记录 id，用于删除/对齐 |
 | created_at | DATETIME | 否 | 创建时间 |
 

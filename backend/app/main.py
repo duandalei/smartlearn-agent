@@ -19,13 +19,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import api_router, health_router
 from app.core.config import settings
 from app.core.response import success
-
+from app.db.migrate import ensure_schema_upgrades
+from app.db.session import engine
 
 app: FastAPI = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     debug=settings.DEBUG,
 )
+
+# ---------------------------------------------------------------------------
+# 启动幂等轻量迁移（P8）：import 后、路由挂载前执行——升级代码后重启
+# 即完成加列与 file_size 回填，二次启动为空操作（取舍理由见 db/migrate.py）。
+# ---------------------------------------------------------------------------
+ensure_schema_upgrades(engine)
 
 # ---------------------------------------------------------------------------
 # CORS：允许前端开发服务器访问；具体来源由 .env 的 CORS_ORIGINS 控制。

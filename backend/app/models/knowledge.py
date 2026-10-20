@@ -27,6 +27,8 @@ class KnowledgeItem(TimestampMixin, Base):
         status: pending / parsing / indexed / failed。
         error_msg: 解析或向量化失败原因（failed 时必填）。
         chunk_count: 切分后的分块数。
+        file_size: 原件字节数，上传受理写入，存量公共文档由启动迁移回填
+            （字段定义见 design.md 2.3.2-A 与契约 PROJECT_CONTEXT §6.9）。
     """
 
     __tablename__ = "knowledge_items"
@@ -66,6 +68,11 @@ class KnowledgeItem(TimestampMixin, Base):
     chunk_count: Mapped[int] = mapped_column(
         Integer, default=0, nullable=False, comment="分块数"
     )
+    file_size: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="原件字节数，上传受理写入，存量公共文档由启动迁移回填",
+    )
 
     user: Mapped["User | None"] = relationship(  # noqa: F821
         back_populates="knowledge_items", passive_deletes=True
@@ -84,6 +91,9 @@ class KnowledgeChunk(CreatedAtMixin, Base):
         user_id: 冗余外键 users.id（public 为 NULL，便于按用户过滤）。
         chunk_index: 分块序号，从 0 开始。
         content: 分块文本内容。
+        heading_path: 标题层级路径（如「机器学习基础 > Transformer > 多头注意力」），
+            用于检索结果定位原文章节（字段定义见 design.md 2.3.2-A 与契约
+            PROJECT_CONTEXT §6.10；SQLite 动态类型下与 TEXT 存储等价）。
         embedding_id: Chroma 向量记录 id（RAG 阶段回填，P2 恒为 NULL）。
     """
 
@@ -106,6 +116,11 @@ class KnowledgeChunk(CreatedAtMixin, Base):
         Integer, nullable=False, comment="分块序号，从 0 开始"
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    heading_path: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="标题层级路径，用于检索结果定位原文章节",
+    )
     embedding_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True, comment="Chroma 向量 id（RAG 阶段回填）"
     )
