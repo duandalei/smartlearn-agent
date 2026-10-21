@@ -278,13 +278,27 @@ def _week_bounds_utc(now: datetime) -> tuple[datetime, datetime]:
 # ---------------------------------------------------------------------------
 # CRUD
 # ---------------------------------------------------------------------------
-def create_task(db: Session, user_id: int, data: TaskCreate) -> dict:
-    """创建学习任务（status 固定 todo、source 固定 manual，裁定⑦）。
+def create_task(
+    db: Session,
+    user_id: int,
+    data: TaskCreate,
+    *,
+    source: TaskSource = TaskSource.MANUAL,
+) -> dict:
+    """创建学习任务（status 固定 todo；source 默认 manual，裁定⑦）。
+
+    ``source`` 为 keyword-only 可选参数（P10 裁定①）：默认
+    ``MANUAL`` 保持 P5 任务页创建行为完全不变（既有调用方按位置
+    传参零改动）；Agent 工具层显式传 ``TaskSource.AGENT`` 标记
+    「AI 帮你加的」任务，供前端标注与 P12 计划动态调整时区分
+    人排 / AI 排。HTTP 侧 ``TaskCreate`` schema 仍拒绝 source
+    字段（四系统字段之一），来源不可能由外部请求伪造。
 
     Args:
         db: 数据库会话（依赖注入）。
         user_id: 当前用户 id。
         data: 创建入参。
+        source: 任务来源（默认 MANUAL；Agent 工具传 AGENT）。
 
     Returns:
         dict: TaskOut 结构。
@@ -308,7 +322,7 @@ def create_task(db: Session, user_id: int, data: TaskCreate) -> dict:
         estimated_minutes=data.estimated_minutes,
         deadline=data.deadline,
         status=TaskStatus.TODO,
-        source=TaskSource.MANUAL,
+        source=source,
         completed_at=None,
         actual_minutes=None,
     )

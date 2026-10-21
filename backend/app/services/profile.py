@@ -14,11 +14,39 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.response import CODE_NOT_FOUND, BizException
 from app.models.user import User, UserProfile
 from app.schemas.user import UserProfileOut, UserProfileUpdate
 
 # 空档案默认值（与 PROJECT_CONTEXT §6.2 一致）。
 _DEFAULT_DAILY_MINUTES: int = 60
+
+
+def get_profile_by_user_id(db: Session, user_id: int) -> dict:
+    """按 user_id 获取用户学习档案（agent 层禁 ORM 铁律的适配入口）。
+
+    P10 Agent 工具层统一签名为 ``(db, user_id, arguments)``，不能
+    也不应自行查询 ORM（PROJECT_CONTEXT §4 铁律），而既有
+    ``get_profile(db, user)`` 签名收 User ORM 对象——本函数作为
+    薄封装先 ``db.get(User, user_id)`` 再委托既有实现，惰性补建
+    逻辑经委托 100% 复用、零复制。
+
+    Args:
+        db: 数据库会话。
+        user_id: 用户 id。
+
+    Returns:
+        dict: UserProfileOut 结构（无档案用户惰性补建默认结构，
+            ``daily_study_minutes`` 默认 60）。
+
+    Raises:
+        BizException: code=1005 / HTTP 404，用户不存在时抛出
+            （防御分支——会话用户理论上必然存在）。
+    """
+    user = db.get(User, user_id)
+    if user is None:
+        raise BizException(CODE_NOT_FOUND, "用户不存在", http_status=404)
+    return get_profile(db, user)
 
 
 def _get_or_create_profile(db: Session, user: User) -> UserProfile:
