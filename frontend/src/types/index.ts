@@ -409,4 +409,65 @@ export interface AdviceItem {
 /** 建议出参（对齐后端 AdviceOut，命中几条返回几条）。 */
 export interface AdviceData {
   items: AdviceItem[]
+}// ---------------------------------------------------------------------------
+// 知识库（P8，RAG 检索）
+// ---------------------------------------------------------------------------
+
+/** 文档处理状态（对齐后端 KnowledgeItemStatus 枚举：D1 裁决四态）。 */
+export type KnowledgeItemStatus = 'pending' | 'parsing' | 'indexed' | 'failed'
+
+/** 文档归属（对齐后端 KnowledgeScope 枚举：个人库 / 公共库）。 */
+export type KnowledgeScope = 'personal' | 'public'
+
+/** 知识库文档（对齐后端 KnowledgeItemOut，列表与详情共用）。 */
+export interface KnowledgeItem {
+  id: number
+  user_id: number | null
+  title: string
+  source_type: string
+  file_path: string | null
+  scope: KnowledgeScope
+  status: KnowledgeItemStatus
+  error_msg: string | null
+  chunk_count: number
+  file_size: number | null
+  created_at: string
+  updated_at: string
+}
+
+/** 上传受理响应（对齐后端 KnowledgeUploadOut：status 恒为 pending）。 */
+export interface KnowledgeUploadResult {
+  item_id: number
+  status: string
+}
+
+/** 知识分块（对齐后端 KnowledgeChunkOut，chunk_index 升序全量返回）。 */
+export interface KnowledgeChunk {
+  id: number
+  item_id: number
+  user_id: number | null
+  chunk_index: number
+  content: string
+  heading_path: string | null
+  embedding_id: string | null
+  created_at: string
+}
+
+/** 检索入参（POST /knowledge/search，query 非空 ≤500 字符、top_k 1~20）。 */
+export interface KnowledgeSearchPayload {
+  query: string
+  top_k?: number
+}
+
+/** 单条检索命中（对齐后端 KnowledgeSearchHit，按 score 降序）。 */
+export interface KnowledgeSearchHit {
+  content: string
+  source_title: string
+  score: number
+}
+
+/** 检索响应（对齐后端 KnowledgeSearchOut；mode 为可用性瞬时判定，不落库）。 */
+export interface KnowledgeSearchResult {
+  mode: 'online' | 'offline'
+  results: KnowledgeSearchHit[]
 }

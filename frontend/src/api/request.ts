@@ -33,9 +33,10 @@ const CODE_TOKEN_INVALID = 1003
 const request: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // 不设置全局 Content-Type：Axios 会按 data 类型自动选择
+  // （普通对象 → application/json；FormData → 交给浏览器附加 multipart boundary）。
+  // 若在此固定 application/json，文件上传的 multipart 头会被覆盖，
+  // 后端解析不到 file 字段，返回 422 / 1001「参数校验失败」。
 })
 
 // ---------------------------------------------------------------------------
