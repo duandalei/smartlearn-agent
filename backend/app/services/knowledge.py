@@ -44,7 +44,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -590,15 +590,27 @@ def list_chunks_by_item(
 
 
 async def search_knowledge(
-    db: Session, user_id: int, query: str, top_k: int
+    db: Session,
+    user_id: int,
+    query: str,
+    top_k: int,
+    scope: Literal["personal", "public", "all"] = "all",
 ) -> dict[str, Any]:
     """知识库语义检索（P9 Agent 工具 ``search_knowledge_base`` 底座）。
 
     编排（design.md 2.2.2-5）：查询向量化（在线失败重试后降级
     兜底，mode 判定）→ ``query_visible`` 在**与查询向量同空间**的
-    本人个人库 + 公共库两 collection 检索 → hit 经
-    ``KnowledgeSearchHit.model_validate`` 强类型化（禁止裸 dict 出
-    services 边界）→ 按 score 降序、条数 ≤ top_k。
+    可见 collection 检索（P9 scope 三档：personal 仅本人个人库 /
+    public 仅公共库 / all 两路合并，过滤发生在 collection 选择层，
+    design.md 2.5）→ hit 经 ``KnowledgeSearchHit.model_validate``
+    强类型化（禁止裸 dict 出 services 边界）→ 按 score 降序、
+    条数 ≤ top_k。
+
+    ``scope`` 为**前向兼容扩展**（裁决 #2）：追加带默认值的位置
+    参数，既有四参调用（按位置或关键字）行为不变；``all`` 路径
+    与扩展前逐行一致。``KnowledgeSearchHit`` 组装时从底层 hit
+    填充 ``item_id / chunk_index / scope`` 三字段（P7 组装时被
+    丢弃，P9 裁决 #3 恢复透出，供来源跳转与归属徽章使用）。
 
     mode 不落库的原因（design.md 2.4.3）：可用性是瞬时状态，落库
     会过期误导；mode 只随本次响应透出，是前端渲染离线警示条的
@@ -610,11 +622,14 @@ async def search_knowledge(
         user_id: 当前用户 id（个人库 collection 选择依据）。
         query: 检索问题文本（非空，≤500 字符，入参已校验）。
         top_k: 期望命中条数（1~20，入参已校验）。
+        scope: 检索范围三档（personal / public / all），默认 all。
 
     Returns:
         dict[str, Any]: ``KnowledgeSearchOut`` 序列化结构
-        ``{"mode": "online"|"offline", "results": [...]}``；空库
-        返回 ``{"mode": ..., "results": []}`` 不报错。
+            ``{"mode": "online"|"offline", "results": [...]}``（每条
+            含 content / source_title / score / item_id / chunk_index /
+            scope 六字段）；空库返回 ``{"mode": ..., "results": []}``
+            不报错。
 
     Raises:
         BizException: code=3000 / HTTP 502（查询向量化彻底失败，
@@ -636,7 +651,7 @@ async def search_knowledge(
         ) from None
 
     try:
-        hits = query_visible(user_id, query_vector, top_k, mode)
+        hits = query_visible(user_id, query_vector, top_k, mode, scope)
     except BizException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -662,6 +677,9 @@ async def search_knowledge(
                 "content": hit.get("content", ""),
                 "source_title": source_title,
                 "score": float(hit.get("score", 0.0)),
+                "item_id": hit.get("item_id"),
+                "chunk_index": hit.get("chunk_index"),
+                "scope": hit.get("scope"),
             }
         )
         results.append(validated.model_dump(mode="json"))

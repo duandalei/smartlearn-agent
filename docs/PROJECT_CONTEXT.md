@@ -75,6 +75,7 @@ JWT_EXPIRE_MINUTES=10080
 DATABASE_URL=          # 可选，默认项目根 data/smartlearn.db
 CHROMA_DIR=            # 可选，默认项目根 data/chroma
 CORS_ORIGINS=          # 前端允许来源，JSON 数组
+RAG_MIN_SCORE=         # 可选，RAG 检索相似度阈值，低于该值的命中视为无据；留空回退默认 0.55
 ```
 - `JWT_SECRET` 缺失或仍为占位值（如 `change-me-in-env`）时，应用启动必须直接抛出明确错误并退出，**禁止使用任何内置默认密钥继续运行**。
 
@@ -99,6 +100,7 @@ smartlearn/
 │   │   │   ├── record.ts
 │   │   │   ├── dashboard.ts
 │   │   │   ├── knowledge.ts
+│   │   │   ├── chat.ts
 │   │   │   └── agent.ts
 │   │   ├── assets/
 │   │   ├── components/             # 通用组件（图表、卡片、空状态等）
@@ -134,6 +136,7 @@ smartlearn/
 │   │   │       ├── records.py
 │   │   │       ├── dashboard.py
 │   │   │       ├── knowledge.py    # RAG 上传 / 检索
+│   │   │       ├── chat.py         # RAG 学习问答（SSE 流式 + 历史）
 │   │   │       ├── agent.py        # Agent 对话（SSE 流式）
 │   │   │       └── reports.py
 │   │   ├── schemas/                # Pydantic v2 出入参（按领域拆文件）
@@ -143,11 +146,12 @@ smartlearn/
 │   │   │   ├── tools.py            # 12 个 Tool 的实现
 │   │   │   ├── executor.py         # LLM 工具调用循环
 │   │   │   └── prompts.py          # 系统提示词模板
-│   │   ├── rag/                    # RAG：解析 / 切分 / 向量化 / 检索
+│   │   ├── rag/                    # RAG：解析 / 切分 / 向量化 / 检索 / 问答编排
 │   │   │   ├── parser.py           # pypdf/docx/pptx/markdown 解析
 │   │   │   ├── splitter.py         # 文本清洗与切分
 │   │   │   ├── embedder.py         # Embedding（OpenAI 兼容）
-│   │   │   └── store.py            # Chroma 封装
+│   │   │   ├── store.py            # Chroma 封装
+│   │   │   └── qa.py               # RAG 问答编排（检索 + Prompt + 流式生成）
 │   │   ├── analytics/              # 学习分析引擎：统计、掌握度、报告
 │   │   ├── core/                   # 配置与安全
 │   │   │   ├── config.py           # 读取 .env（pydantic-settings）
@@ -262,7 +266,7 @@ smartlearn/
 
 > 数据库：SQLite；ORM：SQLAlchemy 2.x；类型列为逻辑类型。
 > 通用约定：主键 `id` 统一 `INTEGER` 自增；时间字段统一 `DATETIME`（UTC）；所有时间字段默认非空；外键命名 `<表名单数>_id`；JSON 类字段在 SQLite 中以 `TEXT` 存储 JSON 字符串。
-> MVP 表共 **15 张**：`users` `user_profiles` `learning_goals` `learning_plans` `learning_plan_items` `courses` `tasks` `learning_records` `knowledge_items` `knowledge_chunks` `mistakes` `knowledge_mastery` `agent_conversations` `agent_messages` `learning_reports`。
+> MVP 表共 **16 张**：`users` `user_profiles` `learning_goals` `learning_plans` `learning_plan_items` `courses` `tasks` `learning_records` `knowledge_items` `knowledge_chunks` `mistakes` `knowledge_mastery` `agent_conversations` `agent_messages` `learning_reports` `qa_history`。
 > 时间/日期类字段若允许为空，会在「可空」列显式标注；未标注者默认非空。
 
 ### 6.1 users（用户账号）
@@ -502,6 +506,22 @@ smartlearn/
 | content | TEXT | 是 | 结构化报告内容，JSON 字符串 |
 | created_at | DATETIME | 否 | 创建时间 |
 
+### 6.16 qa_history（RAG 问答历史）
+| 字段 | 类型 | 可空 | 说明 |
+|---|---|---|---|
+| id | INTEGER | 否 | 主键，自增 |
+| user_id | INTEGER | 否 | 外键 users.id，仅本人可见 |
+| question | TEXT | 否 | 用户问题原文（≤500 字符，与检索入参上限一致） |
+| answer | TEXT | 否 | 完整回答（SSE delta 分片按序拼接结果） |
+| sources | TEXT | 否 | 参考来源快照，SSE sources 事件 data 的 JSON 数组字符串（`JSONType` 存储），无据与 chat 时为 `[]` |
+| mode | VARCHAR(20) | 否 | 检索向量模式 online/offline；chat 路径无检索，约定落 online |
+| is_grounded | BOOLEAN | 否 | 是否基于知识库回答（`RAG_MIN_SCORE` 阈值判定结果，前端无据警示样式的权威信号之一） |
+| intent | VARCHAR(20) | 否 | 意图判断结果 knowledge/chat（chat=非知识型跳过检索）；与 is_grounded 双信号联合决定前端还原样式——knowledge 且 is_grounded=false → 无据警示，chat → 正常样式；不落库则两种 false 场景（没检索 vs 检索无果）无法区分，历史回放样式必错一边（P9 R3 新增） |
+| created_at | DATETIME | 否 | 提问时间 |
+
+> **设计意图**：RAG 学习问答（需求文档第 11 章，`/ask` 页）与 AI Agent（第 12 章，`/ai-agent` 页）是两个独立功能、各有用户可见的历史列表——`agent_messages` 是 Agent 会话的消息表，若复用承载 RAG 问答，用户在 AI Agent 页会看到「Transformer 的注意力机制」这类问答记录，两个功能的历史将混成一团。故 `qa_history` 独立建表；检索档位（personal/public/all）为当次请求参数，**不落库**。
+> **`intent` 列补充说明（P9 R3）**：done 事件 data 契约为四字段 `{is_grounded, mode, intent, history_id}`——仅 `is_grounded` 无法区分「没检索（chat）」与「检索无果（knowledge 无据）」两种 `false` 场景，前端样式判定必须双信号联合；chat 与 knowledge 无据两种记录的其余字段完全同构（sources=[] + is_grounded=false），`intent` 不落库则历史回放无法区分，故新增本列。
+
 ---
 
 ## 7. 前端约定
@@ -519,6 +539,7 @@ smartlearn/
 | `/tasks` | `TasksView.vue` | 是 | 学习任务管理（含任务状态流转） |
 | `/learning-records` | `LearningRecordsView.vue` | 是 | 学习记录 |
 | `/knowledge-base` | `KnowledgeBaseView.vue` | 是 | RAG 知识库（上传/列表/检索） |
+| `/ask` | `AskView.vue` | 是 | AI 学习问答（基于知识库的流式问答） |
 | `/ai-agent` | `AgentView.vue` | 是 | AI Agent 对话（流式输出） |
 | `/reports` | `ReportsView.vue` | 是 | 学习成长报告（日报/周报/月报） |
 | `/settings` | `SettingsView.vue` | 是 | 设置 |
@@ -536,6 +557,7 @@ smartlearn/
 | Tasks | `GET/POST /api/v1/tasks`、`GET/PUT/DELETE /api/v1/tasks/{id}`、`PATCH /api/v1/tasks/{id}/status` |
 | Learning Records | `GET/POST /api/v1/records`、`GET/PUT/DELETE /api/v1/records/{id}`、`GET /api/v1/records/timeline`（按天聚合时长，无记录日补 0，供图表）、`GET /api/v1/records/stats`（本周学习时长 / 连续学习天数 / 记录条数） |
 | Knowledge Base | `POST /api/v1/knowledge/upload`、`GET /api/v1/knowledge/items`、`DELETE /api/v1/knowledge/items/{id}`、`POST /api/v1/knowledge/search` |
+| AI 问答（/ask） | `POST /api/v1/chat/qa`（SSE 流式问答，事件顺序 sources → delta → done/error）、`GET /api/v1/chat/history`（历史问答分页，仅本人可见） |
 | AI Agent | `POST /api/v1/agent/conversations`、`GET /api/v1/agent/conversations`、`PATCH /api/v1/agent/conversations/{id}`（重命名）、`DELETE /api/v1/agent/conversations/{id}`（删除）、`GET /api/v1/agent/conversations/{id}/messages`、`POST /api/v1/agent/chat`（SSE 流式） |
 | Plan（`/plans`） | `GET /api/v1/plans`（历史版本列表）、`GET /api/v1/plans/current`（当前 active 计划 + 条目，供周视图课表）、`POST /api/v1/plans/generate`（生成新版本）、`POST /api/v1/plans/{id}/adjust`（调整并生成新版本，`parent_plan_id` 指向原版本，写入 `adjust_reason`）、`GET /api/v1/plans/{id}/diff`（对比 `parent_plan_id`，展示「原计划 → 新计划」+ 调整原因） |
 | Reports | `GET /api/v1/reports`、`GET /api/v1/reports/{id}`、`POST /api/v1/reports/generate` |
@@ -571,7 +593,7 @@ smartlearn/
 - **无裸响应**：路由返回值统一经响应包装，保证 `{code, message, data}`。
 - **JSON 字段序列化（`app/models/types.py`）**：定义**两个** `TypeDecorator`，DB 侧均以 `TEXT` 存储 JSON 字符串（写入用 `json.dumps`、读取用 `json.loads`），但 **Python 侧类型与 `None` 处理分离**：
   - **`JSONListType`**：Python 侧为 `list[str]`；读到 `NULL`/`None` 统一返回 `[]`（空数组是自然默认）。适用字段：`tasks.knowledge_points`、`learning_records.knowledge_points`、`user_profiles.interest_directions`。
-  - **`JSONType`**：Python 侧为 `Any`（`dict` / `list[dict]`）；读到 `NULL`/`None` **原样返回 `None`**，**不得强行返回 `{}`**。适用字段：`learning_goals.roadmap`、`learning_reports.content`、`agent_messages.tool_calls`。
+   - **`JSONType`**：Python 侧为 `Any`（`dict` / `list[dict]`）；读到 `NULL`/`None` **原样返回 `None`**，**不得强行返回 `{}`**。适用字段：`learning_goals.roadmap`、`learning_reports.content`、`agent_messages.tool_calls`、`qa_history.sources`。
     - **原因**：`learning_goals.roadmap = None` 表示「**从未拆解过**」，是有语义的状态；若被替换成 `{}`，前端将无法区分「从未拆解」与「拆解结果为空」两种情况。
   - 上述字段统一声明为 `Mapped[...] = mapped_column(JSONListType / JSONType)`。**services / schemas / api 各层禁止再手动 `json.loads`/`json.dumps`**；前端 `src/types/` 中，`JSONListType` 对应字段声明为 `string[]`，`JSONType` 对应字段声明为可选（`... | null`）。
 

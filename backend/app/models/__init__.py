@@ -1,6 +1,6 @@
 """ORM 模型聚合导出。
 
-``import app.models`` 即可将全部 15 张表注册到同一 ``Base.metadata``，
+``import app.models`` 即可将全部 16 张表注册到同一 ``Base.metadata``，
 ``Base.metadata.create_all`` 一次建齐（init_db 依赖此行为）。
 """
 
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.models.base import Base, CreatedAtMixin, TimestampMixin, sa_enum, utc_now
 from app.models.enums import (
+    EmbedMode,
     GoalStatus,
     KnowledgeItemStatus,
     KnowledgeScope,
@@ -34,6 +35,7 @@ from app.models.mistake import Mistake
 from app.models.mastery import KnowledgeMastery
 from app.models.agent import AgentConversation, AgentMessage
 from app.models.report import LearningReport
+from app.models.qa import QAHistory
 
 __all__ = [
     # 基础设施
@@ -58,7 +60,8 @@ __all__ = [
     "MasterySource",
     "MessageRole",
     "ReportType",
-    # 15 张表模型
+    "EmbedMode",
+    # 16 张表模型
     "User",
     "UserProfile",
     "LearningGoal",
@@ -74,4 +77,5 @@ __all__ = [
     "AgentConversation",
     "AgentMessage",
     "LearningReport",
+    "QAHistory",
 ]

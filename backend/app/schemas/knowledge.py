@@ -60,17 +60,28 @@ class KnowledgeSearchIn(BaseModel):
 
 
 class KnowledgeSearchHit(BaseModel):
-    """单条检索命中（design.md 2.2.2-(5)）。
+    """单条检索命中（design.md 2.2.2-(5)；P9 裁决 #3 扩展三字段）。
+
+    ``item_id`` / ``chunk_index`` / ``scope`` 为 P9 新增可选字段
+    （底层 ``query_visible`` 命中已含、P7 组装时被丢弃，P9 恢复
+    透出，供问答来源跳转与归属徽章使用）；可选语义（默认 None，
+    实际总有值），既有消费方按原三字段读取不受影响。
 
     Attributes:
         content: 命中片段正文。
         source_title: 来源展示名，「文档标题 » 标题路径」。
         score: 相似度分数（1 - cosine 距离，降序，保留 4 位小数）。
+        item_id: 来源文档 id（P9，跳转定位依据）。
+        chunk_index: 来源分块序号（P9，高亮定位依据）。
+        scope: 归属作用域（P9，personal / public）。
     """
 
     content: str
     source_title: str
     score: float
+    item_id: int | None = None
+    chunk_index: int | None = None
+    scope: str | None = None
 
 
 class KnowledgeSearchOut(BaseModel):

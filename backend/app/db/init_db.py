@@ -8,7 +8,7 @@ P13 才实现演示数据重置）。
     cd backend && python -m app.db.init_db
 
 行为：
-1. ``Base.metadata.create_all`` 一次建齐 15 张表（幂等：已存在跳过）。
+1. ``Base.metadata.create_all`` 一次建齐 16 张表（幂等：已存在跳过）。
 2. 以「demo 用户存在」为唯一幂等开关：存在则跳过全部插入，
    重复执行不报错、不重复插入、退出码恒为 0。
 3. 种子全部在单一事务内写入，任一步异常整体回滚（库中无半成品，
@@ -48,6 +48,7 @@ from app.models import (
     LearningRecord,
     LearningReport,
     Mistake,
+    QAHistory,
     Task,
     User,
     UserProfile,
@@ -1106,7 +1107,7 @@ def _seed_all(db: Session) -> None:
 
 
 def _print_summary() -> None:
-    """打印 15 张表的记录数摘要，供与验收 B 组核对。"""
+    """打印 16 张表的记录数摘要，供与验收 B 组核对。"""
     tables: list[tuple[str, type]] = [
         ("users", User),
         ("user_profiles", UserProfile),
@@ -1123,6 +1124,7 @@ def _print_summary() -> None:
         ("agent_conversations", AgentConversation),
         ("agent_messages", AgentMessage),
         ("learning_reports", LearningReport),
+        ("qa_history", QAHistory),
     ]
     with SessionLocal() as db:
         counts = {name: (db.scalar(select(func.count()).select_from(model)) or 0)

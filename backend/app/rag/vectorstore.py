@@ -237,14 +237,21 @@ def query_visible(
     query_vector: list[float],
     top_k: int,
     mode: EmbedMode,
+    scope: str = "all",
 ) -> list[dict[str, Any]]:
-    """在「本人个人库 + 公共库」同空间两 collection 检索并合并。
+    """按检索范围档位在可见 collection 中检索并合并（P9 scope 扩展）。
 
     按 mode 选库（design.md 2.4.1 规则 2：查询向量与被查库必然
-    同空间——online 查 ``kb_user_{uid}`` + ``kb_public``；offline
-    查两 ``_local`` 库）；每库 ``n_results = min(top_k, count)``
-    且 ``count()==0`` 直接跳过（空库查询防御，design.md 2.7-C-4）；
-    两路命中合并后按 score 降序截断 top_k。
+    同空间——online 查 ``kb_user_{uid}`` / ``kb_public``；offline
+    查对应 ``_local`` 库）；**过滤发生在 collection 选择层**（P9
+    design.md 2.5）而非 SQL where 或 Chroma where metadata——
+    ``personal`` 仅查本人个人库、``public`` 仅查公共库、``all``
+    维持两路合并（现状行为原样）。隔离红线结构性继承：双层知识库
+    的物理隔离就是 collection 级（``kb_user_{uid}`` 分库即权限边界），
+    personal 档在存储结构上不可能命中他用户内容（验收 D4 的结构性
+    保证）。每库 ``n_results = min(top_k, count)`` 且 ``count()==0``
+    直接跳过（空库查询防御）；命中合并后按 score 降序截断 top_k
+    （单路档位时合并退化为恒等）。
 
     Args:
         user_id: 当前用户 id（决定个人库 collection，跨用户命中在
@@ -252,15 +259,25 @@ def query_visible(
         query_vector: 查询向量（与 mode 同空间）。
         top_k: 期望命中条数上限。
         mode: 查询向量空间模式。
+        scope: 检索范围三档（personal / public / all），默认 all
+            （前向兼容：不传时行为与扩展前逐行一致）。
 
     Returns:
         list[dict[str, Any]]: 命中列表（content / item_id /
         chunk_index / scope / title / heading_path / score，按 score
         降序）；空库返回空列表。
     """
+    if scope == "personal":
+        targets: tuple[tuple[str, int | None], ...] = (
+            ("personal", user_id),
+        )
+    elif scope == "public":
+        targets = (("public", None),)
+    else:
+        targets = (("personal", user_id), ("public", None))
     hits: list[dict[str, Any]] = []
-    for scope, owner_id in (("personal", user_id), ("public", None)):
-        collection = _collection(scope, owner_id, mode)
+    for owner_scope, owner_id in targets:
+        collection = _collection(owner_scope, owner_id, mode)
         total = collection.count()
         if total == 0:
             continue
@@ -279,7 +296,7 @@ def query_visible(
                     "content": document,
                     "item_id": meta.get("item_id"),
                     "chunk_index": meta.get("chunk_index"),
-                    "scope": meta.get("scope", scope),
+                    "scope": meta.get("scope", owner_scope),
                     "title": meta.get("title", ""),
                     "heading_path": meta.get("heading_path", ""),
                     "score": round(1.0 - float(distance), 4),

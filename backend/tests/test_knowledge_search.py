@@ -71,7 +71,8 @@ def test_search_response_structure_and_ordering(
     public_docs: list[int],
     offline_embedding: None,
 ) -> None:
-    """响应结构：data={mode,results}，hit 恰含三字段，score 降序且 ∈[-1,1]。"""
+    """响应结构：data={mode,results}，hit 含六字段（P9 裁决 #3 新增
+    item_id / chunk_index / scope 三个可选透出字段），score 降序且 ∈[-1,1]。"""
     upload_document(
         app_client,
         user_a,
@@ -86,7 +87,15 @@ def test_search_response_structure_and_ordering(
     assert scores == sorted(scores, reverse=True), "必须按 score 降序"
     assert all(-1.0 <= score <= 1.0 for score in scores)
     for hit in data["results"]:
-        assert set(hit.keys()) == {"content", "source_title", "score"}
+        # P9 裁决 #3：既有三字段不删不改 + 新增三字段透出（跳转定位依据）。
+        assert set(hit.keys()) == {
+            "content",
+            "source_title",
+            "score",
+            "item_id",
+            "chunk_index",
+            "scope",
+        }
         assert hit["content"]
         assert hit["source_title"]
         assert isinstance(hit["score"], float)

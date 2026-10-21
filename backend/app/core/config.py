@@ -8,7 +8,7 @@
     LLM_BASE_URL / LLM_API_KEY / LLM_MODEL（对话配置组）
     EMBEDDING_BASE_URL / EMBEDDING_API_KEY / EMBEDDING_MODEL（向量化配置组，
     任一项为空时逐项回退对应 LLM_* 值）
-    JWT_SECRET / DATABASE_URL / CHROMA_DIR
+    JWT_SECRET / DATABASE_URL / CHROMA_DIR / RAG_MIN_SCORE
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # JWT_SECRET 禁止使用的占位值（与 backend/.env.example 保持一致）。
@@ -97,6 +97,32 @@ class Settings(BaseSettings):
 
     # ---- 向量库 -----------------------------------------------------------
     CHROMA_DIR: str = (DATA_DIR / "chroma").as_posix()
+
+    # ---- RAG 检索阈值（P9，裁决 #12）-------------------------------------
+    # 无据判定阈值：检索命中 score 低于该值视为无据。取值依据（bge-m3
+    # 实测分数分布）：领域内 0.572–0.733 / 领域外 0.412–0.533，0.55
+    # 恰好挡住领域外最高分 0.533 并保住领域内最低分 0.572（间隔仅
+    # 0.04，故另有 Prompt 第二道防线兜底，见 rag/qa.py 模板一规则 3）。
+    # 留空回退默认 0.55（契约 §2「留空回退默认」）。
+    RAG_MIN_SCORE: float = Field(default=0.55, ge=0.0, le=1.0)
+
+    @field_validator("RAG_MIN_SCORE", mode="before")
+    @classmethod
+    def _rag_min_score_empty_fallback(cls, value: object) -> object:
+        """RAG_MIN_SCORE 留空回退默认 0.55（契约 §2）。
+
+        pydantic-settings 直接映射 float 在环境变量为空字符串或 None
+        时会校验失败，必须前置转换（design.md 1.1.2 / tasks.md 1.1）。
+
+        Args:
+            value: 环境变量原始值（可能为空串 / None / 数字）。
+
+        Returns:
+            object: 空值回退为 0.55，其余原样交给 Field 约束校验。
+        """
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return 0.55
+        return value
 
     # ---- 上传目录 ---------------------------------------------------------
     UPLOAD_DIR: str = (DATA_DIR / "uploads").as_posix()

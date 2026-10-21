@@ -33,6 +33,7 @@ from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.agent import router as agent_router
 from app.api.v1.agent_messages import router as agent_messages_router
 from app.api.v1.reports import router as reports_router
+from app.api.v1.chat import router as chat_router
 
 # 业务路由（挂载前缀 /api/v1）。
 api_router: APIRouter = APIRouter()
@@ -54,6 +55,7 @@ api_router.include_router(dashboard_router)
 api_router.include_router(agent_router)
 api_router.include_router(agent_messages_router)
 api_router.include_router(reports_router)
+api_router.include_router(chat_router)
 
 # 健康检查路由（不带前缀，直接挂 /health）。
 __all__ = ["api_router", "health_router"]

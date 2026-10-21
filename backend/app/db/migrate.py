@@ -5,7 +5,13 @@
    ``file_path`` 非空且 ``file_size IS NULL`` 的行按文件系统 stat 回填
    字节数（文件缺失时保持 NULL 并记 warning，不阻断启动）；
 2. ``knowledge_chunks`` 补 ``heading_path TEXT NULL`` 列（历史分块
-   不回填，由公共文档重索引写入真实值，见 design.md 2.5）。
+   不回填，由公共文档重索引写入真实值，见 design.md 2.5）；
+3. ``qa_history`` 建表条目（P9，design.md 1.2.4）：main.py 启动时
+   不调 create_all，仅把 QAHistory 注册进 ``Base.metadata`` 而不追加
+   建表条目的话，**存量库（demo 用户已存在、永不重跑种子）重启后
+   qa_history 表不存在，首个 done 落库即 500**——故以
+   ``create_all(engine, tables=[QAHistory.__table__])`` 幂等建表
+   （已存在跳过，与 P8「重启即升级」惯例一致）。
 
 **为什么放应用启动路径而不放 init_db.py**：种子的幂等开关是
 「demo 用户存在即跳过」，存量库永远不会重跑 init_db，迁移挂在
@@ -17,7 +23,8 @@
 的十行逻辑足够，后续列变更继续在本模块追加条目即可。
 
 幂等性：PRAGMA 检查列存在性，已存在则跳过 ALTER；回填仅作用于
-``file_size IS NULL`` 且原件存在的行，二次启动全部为空操作。
+``file_size IS NULL`` 且原件存在的行，二次启动全部为空操作；
+``create_all(tables=[...])`` 对已存在表自动跳过。
 """
 
 from __future__ import annotations
@@ -29,6 +36,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from app.core.config import PROJECT_ROOT
+from app.models import QAHistory
+from app.models.base import Base
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +94,8 @@ def _backfill_file_size(conn: object) -> None:
 
 
 def ensure_schema_upgrades(engine: Engine) -> None:
-    """执行启动期幂等 schema 升级（P8：两个可空列 + file_size 回填）。
+    """执行启动期幂等 schema 升级（P8：两个可空列 + file_size 回填；
+    P9：qa_history 建表条目）。
 
     Args:
         engine: 全局 engine（与业务库同库）。
@@ -112,3 +122,6 @@ def ensure_schema_upgrades(engine: Engine) -> None:
         # 新表行 file_size 由业务写入，无回填需求。
         if item_cols:
             _backfill_file_size(conn)
+    # P9：qa_history 建表（幂等：表已存在时 create_all 自动跳过；
+    # create_all 自带连接管理，置于显式事务外执行）。
+    Base.metadata.create_all(engine, tables=[QAHistory.__table__])

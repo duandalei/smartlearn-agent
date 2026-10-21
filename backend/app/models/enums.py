@@ -121,3 +121,16 @@ class ReportType(str, enum.Enum):
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
+
+class EmbedMode(str, enum.Enum):
+    """向量空间模式（qa_history.mode 落库专用，P9）。
+
+    与 ``rag/embedding.py`` 的 ``EmbedMode = Literal["online", "offline"]``
+    是两套类型各司其职（design.md 2.3.2 双轨说明）：前者是能力层
+    返回类型标注（零改动），后者是 ORM 落库列类型（本阶段新增）；
+    两者成员值字符串一致，边界处以字符串值自然衔接（枚举按值构造），
+    无需互相 import。
+    """
+
+    ONLINE = "online"
+    OFFLINE = "offline"
