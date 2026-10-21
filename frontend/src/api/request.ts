@@ -46,7 +46,13 @@ function getToken(): string {
   return localStorage.getItem(TOKEN_KEY) || ''
 }
 
-function clearTokenAndRedirect(): void {
+/**
+ * 清除 token 并跳转登录页（fetch SSE 路径 401 复用，决策 D8）。
+ *
+ * P9 起导出：fetch 流式路径不经 Axios 拦截器，但 401 行为必须与
+ * Axios 路径一致（清 token + 跳 /login）；单一实现防两处漂移。
+ */
+export function clearTokenAndRedirect(): void {
   localStorage.removeItem(TOKEN_KEY)
   // 避免在登录页重复跳转
   if (window.location.pathname !== '/login') {

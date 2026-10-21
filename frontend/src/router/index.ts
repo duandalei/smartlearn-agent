@@ -65,6 +65,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '知识库', needsAuth: true },
       },
       {
+        path: 'ask',
+        name: 'ask',
+        component: () => import('@/views/AskView.vue'),
+        meta: { title: 'AI 问答', needsAuth: true },
+      },
+      {
         path: 'ai-agent',
         name: 'ai-agent',
         component: () => import('@/views/AgentView.vue'),

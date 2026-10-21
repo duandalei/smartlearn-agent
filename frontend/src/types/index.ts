@@ -459,15 +459,106 @@ export interface KnowledgeSearchPayload {
   top_k?: number
 }
 
-/** 单条检索命中（对齐后端 KnowledgeSearchHit，按 score 降序）。 */
+/** 单条检索命中（对齐后端 KnowledgeSearchHit，按 score 降序）。
+ *
+ * item_id / chunk_index / scope 为 P9 裁决 #3 新增可选字段（后端
+ * 组装时透出，供问答来源卡跳转定位与归属徽章使用）；可选语义对齐
+ * 后端 schema（默认 null，实际总有值），不影响既有消费方。
+ */
 export interface KnowledgeSearchHit {
   content: string
   source_title: string
   score: number
+  item_id?: number | null
+  chunk_index?: number | null
+  scope?: KnowledgeScope | null
 }
 
 /** 检索响应（对齐后端 KnowledgeSearchOut；mode 为可用性瞬时判定，不落库）。 */
 export interface KnowledgeSearchResult {
   mode: 'online' | 'offline'
   results: KnowledgeSearchHit[]
+}
+
+// ---------------------------------------------------------------------------
+// AI 学习问答（P9，RAG QA）
+// ---------------------------------------------------------------------------
+
+/** 检索范围三档（对齐后端 ChatQAIn.scope，前后端共用同一套小写字面量）。 */
+export type QaScope = 'personal' | 'public' | 'all'
+
+/** 问题意图（对齐后端 done.data.intent / qa_history.intent，R3 新增）。 */
+export type QaIntent = 'knowledge' | 'chat'
+
+/** SSE 来源条目（对齐后端 sources 事件 data 元素 / QaSourceItem）。
+ *
+ * item_id / chunk_index 可空为防御性设计：极端脏快照下历史接口不
+ * 500，前端跳转判空降级为纯展示。
+ */
+export interface QaSourceItem {
+  item_id: number | null
+  chunk_index: number | null
+  content: string
+  source_title: string
+  score: number
+  scope: KnowledgeScope
+}
+
+/** SSE 事件可辨识联合（对齐后端四事件契约；done 为 R3 四字段）。 */
+export type QaSseEvent =
+  | { type: 'sources'; data: QaSourceItem[] }
+  | { type: 'delta'; data: string }
+  | {
+      type: 'done'
+      data: {
+        is_grounded: boolean
+        mode: 'online' | 'offline'
+        intent: QaIntent
+        history_id: number | null
+      }
+    }
+  | { type: 'error'; data: { code: number; message: string } }
+
+/** 问答请求体（POST /chat/qa）。 */
+export interface ChatQaPayload {
+  question: string
+  scope?: QaScope
+}
+
+/** 历史问答条目（对齐后端 ChatHistoryOut，含 intent——回放双信号
+ * 样式判定的前置信号：intent=knowledge 且 is_grounded=false 才渲染
+ * 无据警示，intent=chat 恒正常样式）。 */
+export interface ChatHistoryItem {
+  id: number
+  question: string
+  answer: string
+  sources: QaSourceItem[]
+  mode: 'online' | 'offline'
+  is_grounded: boolean
+  intent: QaIntent
+  created_at: string
+}
+
+/** 历史分页响应（对齐后端 paginate 结构）。 */
+export interface ChatHistoryResult {
+  items: ChatHistoryItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+/** 问答视图内部消息类型（AskView ↔ MessageBubble 组件间契约）。
+ *
+ * 双信号 is_grounded / intent 在流中为 null（权威值由 done 事件
+ * 服务端下发），done 后定值；历史还原直接携带定值。
+ */
+export interface AskMessage {
+  role: 'user' | 'assistant'
+  content: string
+  sources: QaSourceItem[]
+  is_grounded: boolean | null
+  intent: QaIntent | null
+  mode: 'online' | 'offline' | null
+  streaming: boolean
+  error: string | null
 }

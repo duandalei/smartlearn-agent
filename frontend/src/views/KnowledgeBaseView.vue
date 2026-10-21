@@ -13,14 +13,17 @@
  * 静默重试（错误 toast 由 request.ts 拦截器统一弹出一次）。
  */
 import { onMounted, onUnmounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 import ChunkDrawer from '@/components/knowledge/ChunkDrawer.vue'
 import DocumentTable from '@/components/knowledge/DocumentTable.vue'
 import SearchPanel from '@/components/knowledge/SearchPanel.vue'
 import UploadPanel from '@/components/knowledge/UploadPanel.vue'
-import { listKnowledgeItems } from '@/api/knowledge'
+import { getKnowledgeItem, listKnowledgeItems } from '@/api/knowledge'
 import type { KnowledgeItem } from '@/types'
 import { isKbProcessing } from '@/utils/knowledge'
+
+const route = useRoute()
 
 /** 轮询间隔（spec 5.6.1 规则 7：3 秒条件轮询）。 */
 const POLL_INTERVAL = 3000
@@ -39,6 +42,39 @@ let pollTimer: number | undefined
 /** 分块抽屉状态（视图持有目标文档）。 */
 const drawerVisible = ref(false)
 const activeItem = ref<KnowledgeItem | null>(null)
+
+/** 跳转定位的分块高亮序号（P9 来源卡承接，null = 无高亮）。 */
+const highlightChunkIndex = ref<number | null>(null)
+
+/**
+ * 处理来源卡跳转 query（?item_id=&chunk_index=，P9 spec 5.4.3）。
+ *
+ * 详情调用使定位不受分页影响（文档可能不在当前页列表中）；不可见
+ * 或已删除统一 404（错误提示由拦截器统一弹出，不白屏）；历史快照
+ * 过期场景按 item_id 尽力定位、失败即止。仅挂载时消费一次，避免
+ * 站内刷新重复弹错。
+ */
+async function consumeLocateQuery(): Promise<void> {
+  const rawItemId = Array.isArray(route.query.item_id)
+    ? route.query.item_id[0]
+    : route.query.item_id
+  const rawChunk = Array.isArray(route.query.chunk_index)
+    ? route.query.chunk_index[0]
+    : route.query.chunk_index
+  const itemId = Number(rawItemId)
+  if (!rawItemId || !Number.isInteger(itemId) || itemId <= 0) return
+  try {
+    const item = await getKnowledgeItem(itemId)
+    activeItem.value = item
+    highlightChunkIndex.value =
+      rawChunk != null && Number.isInteger(Number(rawChunk)) && Number(rawChunk) >= 0
+        ? Number(rawChunk)
+        : null
+    drawerVisible.value = true
+  } catch {
+    // 文档不存在 / 不可见：提示由拦截器统一弹出，页面保持正常可用。
+  }
+}
 
 /** 是否存在非终态文档（pending/parsing）——轮询启动/停止判定。 */
 function shouldPoll(list: KnowledgeItem[]): boolean {
@@ -90,13 +126,17 @@ function onPageChange(next: number): void {
   void refreshItems()
 }
 
-/** 查看分块（indexed 行）。 */
+/** 查看分块（indexed 行）：清除跳转高亮（人工浏览场景）。 */
 function onViewChunks(item: KnowledgeItem): void {
   activeItem.value = item
+  highlightChunkIndex.value = null
   drawerVisible.value = true
 }
 
-onMounted(() => void refreshItems())
+onMounted(() => {
+  void refreshItems()
+  void consumeLocateQuery()
+})
 
 onUnmounted(() => {
   if (pollTimer !== undefined) {
@@ -136,7 +176,11 @@ onUnmounted(() => {
       <template #header><span>语义检索</span></template>
       <SearchPanel />
     </el-card>
-    <ChunkDrawer v-model="drawerVisible" :item="activeItem" />
+    <ChunkDrawer
+      v-model="drawerVisible"
+      :item="activeItem"
+      :highlight-chunk-index="highlightChunkIndex"
+    />
   </div>
 </template>
 

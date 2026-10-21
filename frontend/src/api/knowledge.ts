@@ -3,7 +3,7 @@
  *
  * - POST   /knowledge/upload                上传受理（multipart，进度回调）
  * - GET    /knowledge/items                 文档列表（分页，本人个人库 + 公共库）
- * - GET    /knowledge/items/{id}            文档详情（本文件未封装，详情经列表轮询覆盖）
+ * - GET    /knowledge/items/{id}            文档详情（P9 跳转承接用，按 id 直取）
  * - DELETE /knowledge/items/{id}            删除个人库文档（级联清理）
  * - POST   /knowledge/items/{id}/reindex    重新索引（幂等重跑，公共文档允许）
  * - GET    /knowledge/items/{id}/chunks     按文档查看全部分块
@@ -77,6 +77,19 @@ export function reindexKnowledgeItem(id: number): Promise<KnowledgeUploadResult>
   return request.post(
     `/knowledge/items/${id}/reindex`,
   ) as unknown as Promise<KnowledgeUploadResult>
+}
+
+/**
+ * 按文档 id 查询详情（P9 跳转承接用：问答来源卡定位时文档可能不在
+ * 当前页列表中，详情端点直接按 id 取；不可见或已删除统一 404/1005）。
+ *
+ * 纯追加导出（不改既有函数，与后端裁决 #3 同精神）。
+ *
+ * @param id 文档 id。
+ * @returns 文档对象（本人个人库 + 公共库可见范围）。
+ */
+export function getKnowledgeItem(id: number): Promise<KnowledgeItem> {
+  return request.get(`/knowledge/items/${id}`) as unknown as Promise<KnowledgeItem>
 }
 
 /**
