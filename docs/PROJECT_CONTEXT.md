@@ -143,9 +143,11 @@ smartlearn/
 │   │   ├── models/                 # SQLAlchemy ORM 模型（与数据库表一一对应）
 │   │   ├── services/               # 业务逻辑层（事务、业务规则）
 │   │   ├── agent/                  # Agent 智能体：工具定义、编排、决策
-│   │   │   ├── tools.py            # 12 个 Tool 的实现
-│   │   │   ├── executor.py         # LLM 工具调用循环
-│   │   │   └── prompts.py          # 系统提示词模板
+│   │   │   ├── tools.py            # Tool 实现（P10：8 个工具 + tool_endpoint 装饰器）
+│   │   │   ├── registry.py         # TOOLS_SCHEMA / TOOL_MAP 单一事实来源（P10）
+│   │   │   ├── core.py             # LLM 工具调用主循环（P11：ReAct + SSE 事件编排）
+│   │   │   ├── prompts.py          # 系统提示词模板（P11：七段模板 + 预取降级）
+│   │   │   └── memory.py           # 会话与消息持久化（P11：agent_conversations / agent_messages）
 │   │   ├── rag/                    # RAG：解析 / 切分 / 向量化 / 检索 / 问答编排
 │   │   │   ├── parser.py           # pypdf/docx/pptx/markdown 解析
 │   │   │   ├── splitter.py         # 文本清洗与切分

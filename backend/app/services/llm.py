@@ -241,3 +241,158 @@ async def chat_stream(messages: Sequence[ChatMessage]) -> AsyncIterator[str]:
     finally:
         # 连接中断（客户端断开等）时安全结束迭代并释放上游资源。
         await stream.close()
+
+# ---------------------------------------------------------------------------
+# Agent 专用流式 + function calling（P11 追加区，design 2.4.2 / 裁决 #4）
+# ---------------------------------------------------------------------------
+# 既有 ChatMessage / get_chat_client / chat / chat_stream / 客户端构造区
+# 契约零改动（P9 问答与 P4 目标拆解依赖，spec §4.5 规则 1）；本区仅在
+# 文件末尾追加。模块定位不变：纯传输层——收 OpenAI 协议 dict 消息，
+# 发结构化分片（AgentStreamPart）；消息序列的结构合法性由
+# app/agent/core.py 的构造逻辑单点保证，本模块不定义业务消息语义。
+from typing import Any  # noqa: E402 - 追加区独立 import（纯追加铁律：不触碰文件头部既有 import 行）
+
+AgentTextDelta = TypedDict("AgentTextDelta", {"content": str})
+AgentReasoningDelta = TypedDict("AgentReasoningDelta", {"reasoning": str})
+AgentRoundResult = TypedDict(
+    "AgentRoundResult",
+    {"tool_calls": list[dict[str, Any]], "finish_reason": str},
+)
+#: Agent 流式分片三形态可辨识联合（design 2.2.2-(8)）：core.py 以键
+#: 存在性判别——``"content" in part`` → 文本增量；``"reasoning" in
+#: part`` → 推理增量；其余为轮终聚合块 AgentRoundResult（每轮流恰产
+#: 出一次，流末聚合）。
+AgentStreamPart = AgentTextDelta | AgentReasoningDelta | AgentRoundResult
+
+
+async def agent_chat_stream(
+    messages: Sequence[dict[str, Any]],
+    tools: Sequence[dict[str, Any]] | None = None,
+    max_tokens: int = 2048,
+) -> AsyncIterator[AgentStreamPart]:
+    """Agent 专用流式对话：function calling + 文本 / 推理增量（design 2.4.2）。
+
+    与既有 :func:`chat_stream` 的差异：携带 ``tools``（TOOLS_SCHEMA
+    直传）与 ``max_tokens``（Agent 循环锁定 2048——P10 实测 300 时
+    finish=length 截断、工具调用参数不完整，裁决 #9），并把流式
+    tool_calls 分片聚合为轮终块。
+
+    请求构造：``tools=None``（O5 总结调用路径）时**省略 tools /
+    tool_choice 两键**——模型协议上无法发起 tool_call（决策 A7）。
+    创建段异常沿用 ``_SERVICE_ERRORS`` 包装口径；**迭代段异常不包装**
+    （与 chat_stream 一致，由 core.py 双兜：BizException 用其
+    code/message、原始异常按已推 delta 区分文案）。
+
+    Args:
+        messages: OpenAI 协议消息序列（system / user / assistant /
+            tool 各形态，结构由调用方 core.py 单点保证）。
+        tools: function calling 工具描述（TOOLS_SCHEMA 直传）；
+            None 时请求体不带 tools 键（禁工具总结调用）。
+        max_tokens: 单次调用生成上限；Agent 循环固定传 2048。
+
+    Yields:
+        AgentStreamPart: 三形态分片——AgentTextDelta（文本增量，
+            实时）、AgentReasoningDelta（推理增量，实时）、
+            AgentRoundResult（流末聚合：tool_calls 非流式形态 +
+            finish_reason，缺省 ``"stop"``）。
+
+    Raises:
+        BizException: code=3000 / HTTP 502，创建段服务类失败或
+            对话组配置缺失时抛出；原始异常与堆栈不外透。
+    """
+    request_kwargs: dict[str, Any] = {
+        "model": settings.LLM_MODEL.strip(),
+        "messages": list(messages),
+        "stream": True,
+        "max_tokens": max_tokens,
+    }
+    if tools is not None:
+        request_kwargs["tools"] = tools
+        request_kwargs["tool_choice"] = "auto"
+    try:
+        stream = await get_chat_client().chat.completions.create(**request_kwargs)
+    except BizException:
+        raise
+    except _SERVICE_ERRORS as exc:
+        logger.warning(
+            "LLM 服务类失败(agent_stream): 类型=%s 摘要=%s",
+            type(exc).__name__,
+            str(exc)[:200],
+        )
+        raise BizException(
+            CODE_LLM_FAILED,
+            "AI 服务暂时不可用，请稍后重试",
+            http_status=502,
+        ) from None
+
+    # tool_calls 流式增量聚合状态（design 2.4.2-B）：
+    # - pending：index → {id, name, args_parts} 分桶。**按 index 分桶
+    #   是正确性核心**——一轮可含多个并行 tool_call，各调用的 name 与
+    #   arguments 分片以 index 区分交错到达，同 index 累加、跨 index
+    #   不串（真实 DeepSeek 流下 name 与 arguments 分散在多个 chunk）；
+    # - last_index：兼容不回 index 的端点（缺失时沿用最近 index）。
+    pending: dict[int, dict[str, Any]] = {}
+    last_index: int = 0
+    final_finish: str | None = None
+    try:
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            delta = choice.delta
+            if delta is None:
+                continue
+            content = getattr(delta, "content", None)
+            if content:
+                yield {"content": content}
+            reasoning = getattr(delta, "reasoning_content", None)
+            if reasoning:
+                yield {"reasoning": reasoning}
+            tool_call_deltas = getattr(delta, "tool_calls", None)
+            if tool_call_deltas:
+                for tc in tool_call_deltas:
+                    idx = getattr(tc, "index", None)
+                    if idx is None:
+                        idx = last_index
+                    last_index = idx
+                    bucket = pending.setdefault(
+                        idx, {"id": None, "name": None, "args_parts": []}
+                    )
+                    tc_id = getattr(tc, "id", None)
+                    if tc_id:
+                        bucket["id"] = tc_id
+                    function = getattr(tc, "function", None)
+                    if function is not None:
+                        fn_name = getattr(function, "name", None)
+                        if fn_name:
+                            bucket["name"] = fn_name
+                        fn_args = getattr(function, "arguments", None)
+                        if fn_args:
+                            # arguments 是字符串增量累加（OpenAI 协议流式
+                            # 形态），聚合完成才是完整 JSON 字符串——解析
+                            # 职责在上层 core.py（算法要点②）。
+                            bucket["args_parts"].append(fn_args)
+            if choice.finish_reason:
+                final_finish = choice.finish_reason
+    finally:
+        # 连接中断（客户端断开等）时安全结束迭代并释放上游资源。
+        await stream.close()
+
+    # 流末聚合：按 index 升序还原 LLM 的调用顺序（协议保证分片按调用
+    # 序发送）。防御：finish_reason 缺失默认 "stop"（部分兼容端末包
+    # 行为差异兜底）；id 缺失空串（DeepSeek 实际必回 id）。
+    tool_calls: list[dict[str, Any]] = [
+        {
+            "id": bucket["id"] or "",
+            "type": "function",
+            "function": {
+                "name": bucket["name"] or "",
+                "arguments": "".join(bucket["args_parts"]),
+            },
+        }
+        for _, bucket in sorted(pending.items())
+    ]
+    yield {
+        "tool_calls": tool_calls,
+        "finish_reason": final_finish or "stop",
+    }
