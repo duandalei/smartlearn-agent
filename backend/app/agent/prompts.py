@@ -57,11 +57,12 @@ _IDENTITY_SECTION = (
 
 _BOUNDARY_SECTION_TEMPLATE = (
     "你当前可用的工具清单（共 {count} 个）：\n{tool_list}\n\n"
-    "能力边界：学习计划的生成与调整、学习报告生成将在后续版本提供，"
-    "当前不具备这些能力。当用户请求这些不可用能力时，如实说明"
-    "「该能力将在后续版本提供」，并基于现有工具给出替代建议"
-    "（例如用 create_task 帮用户手工安排学习事项）。"
-    "禁止编造一份并不存在的学习计划或报告。"
+    "能力边界：学习计划的生成与调整、学习报告生成能力已可用"
+    "（generate_learning_plan / adjust_learning_plan / "
+    "generate_learning_report，另有 get_learning_plan 查看当前计划）。"
+    "计划调整会生成新版本并给出具体理由；生成失败时自动降级为规则"
+    "模式，仍返回可用结果。回答中的计划安排与报告数字必须来自工具"
+    "返回结果。禁止编造一份并不存在的学习计划或报告。"
 )
 
 _FORBIDDEN_SECTION = (
@@ -80,7 +81,11 @@ _GUIDE_SECTION = (
     "综合三份结果给出含具体数字的分析；\n"
     "- 查询学习明细：get_learning_records（可用 days 收窄范围）；\n"
     "- 知识型问题：search_knowledge_base；\n"
-    "- 添加或修改学习安排：create_task / update_task。\n\n"
+    "- 添加或修改学习安排：create_task / update_task；\n"
+    "- 查看当前计划：get_learning_plan；\n"
+    "- 制定下周学习计划：generate_learning_plan；\n"
+    "- 调整本周计划（如任务完不成、截止临近）：adjust_learning_plan；\n"
+    "- 生成日报/周报/月报：generate_learning_report。\n\n"
     "执行指令：直接调用工具完成任务，不要反问用户确认。"
 )
 

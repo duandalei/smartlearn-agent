@@ -115,10 +115,13 @@ def test_prompt_three_elements(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_prompt_capability_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
-    """能力边界声明：「后续版本」+ 8 工具清单 + 禁止编造计划（D2）。"""
+    """能力边界声明：12 工具 + 正向能力声明 + 不含「后续版本提供」（D6/D13 断言反转）。"""
     _install(monkeypatch, profile=_PROFILE_FIXTURE, statistics=_STATISTICS_FIXTURE)
     prompt = _render(_create_user())
-    assert "后续版本" in prompt
+    assert "后续版本提供" not in prompt  # P12 裁决 #11：正向化改写
+    assert "已可用" in prompt
+    assert "生成新版本并给出具体理由" in prompt
+    assert "自动降级" in prompt
     assert "禁止编造一份并不存在的学习计划或报告" in prompt
     schema_names = {
         str(tool["function"]["name"])
@@ -128,7 +131,7 @@ def test_prompt_capability_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
     }
     for name in schema_names:
         assert name in prompt
-    assert len(schema_names) == 8
+    assert len(schema_names) == 12  # P12：8 → 12
 
 
 def test_prompt_forbidden_items(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -142,12 +145,16 @@ def test_prompt_forbidden_items(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_prompt_scenario_guide(monkeypatch: pytest.MonkeyPatch) -> None:
-    """场景引导：三工具组合引导串（spec 5.2.1 规则 7 / D1 机制侧）。"""
+    """场景引导：三工具组合引导串 + P12 四工具场景行（D6）。"""
     _install(monkeypatch, profile=_PROFILE_FIXTURE, statistics=_STATISTICS_FIXTURE)
     prompt = _render(_create_user())
     assert "get_learning_statistics" in prompt
     assert "get_tasks" in prompt
     assert "get_knowledge_mastery" in prompt
+    assert "get_learning_plan" in prompt
+    assert "generate_learning_plan" in prompt
+    assert "adjust_learning_plan" in prompt
+    assert "generate_learning_report" in prompt
 
 
 def test_prompt_identity_and_style(monkeypatch: pytest.MonkeyPatch) -> None:

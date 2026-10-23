@@ -326,9 +326,11 @@ def g0_registry() -> None:
         "get_user_profile", "get_learning_records", "get_tasks",
         "get_knowledge_mastery", "get_learning_statistics",
         "search_knowledge_base", "create_task", "update_task",
+        "get_learning_plan", "generate_learning_plan",
+        "adjust_learning_plan", "generate_learning_report",
     }
-    check("G0.1 TOOLS_SCHEMA 恰 8 个且名称一一对应",
-          len(TOOLS_SCHEMA) == 8 and set(names) == expected, f"{names}")
+    check("G0.1 TOOLS_SCHEMA 恰 12 个且名称一一对应（P12：8→12）",
+          len(TOOLS_SCHEMA) == 12 and set(names) == expected, f"{names}")
     check("G0.2 TOOL_MAP 键集合与 schema 工具名一致",
           set(TOOL_MAP) == set(names))
 
@@ -361,6 +363,10 @@ def g0_registry() -> None:
         "update_task": ["task_id", "title", "description", "goal_id", "course_id",
                         "knowledge_points", "priority", "estimated_minutes",
                         "actual_minutes", "deadline", "scheduled_date"],
+        "get_learning_plan": [],
+        "generate_learning_plan": [],
+        "adjust_learning_plan": ["plan_id"],
+        "generate_learning_report": ["report_type"],
     }
     g04b = all(
         set(s["function"]["parameters"].get("properties", {})) == set(model_fields[s["function"]["name"]])
@@ -374,12 +380,12 @@ def g0_registry() -> None:
         encoding="utf-8"
     )
     g05 = (
-        not (p12_names & set(names))
-        and not (p12_names & set(TOOL_MAP))
+        p12_names == set(names) & p12_names
+        and p12_names <= set(TOOL_MAP)
         and "P12 接入" in registry_source
         and all(n in registry_source for n in p12_names)
     )
-    check("G0.5 不含 4 个 P12 工具名且 docstring 含「P12 接入」标注", g05)
+    check("G0.5 已注册 4 个 P12 工具名且 docstring 含「P12 接入」交付说明", g05)
 
     try:
         json.dumps(TOOLS_SCHEMA)

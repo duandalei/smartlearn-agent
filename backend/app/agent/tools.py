@@ -714,3 +714,96 @@ async def update_task(
         return update_task_service(db, user_id, params.task_id, data)
     except BizException as exc:
         raise _rewrite_task_biz_error(exc) from None
+
+# ---------------------------------------------------------------------------
+# P12 追加区：动态学习计划与学习成长报告 4 工具（design 2.4.5-A，纯追加铁律）
+# ---------------------------------------------------------------------------
+
+from app.schemas.report import ReportGenerateIn as _ReportGenerateIn  # noqa: E402
+from app.services.plan import (  # noqa: E402
+    adjust_plan as adjust_plan_service,
+)
+from app.services.plan import (  # noqa: E402
+    generate_plan as generate_plan_service,
+)
+from app.services.plan import (  # noqa: E402
+    get_current_plan as get_current_plan_service,
+)
+from app.services.report import (  # noqa: E402
+    generate_report as generate_report_service,
+)
+
+
+class GetLearningPlanParams(BaseModel):
+    """get_learning_plan 参数模型（零字段，白名单为空集）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class GenerateLearningPlanParams(BaseModel):
+    """generate_learning_plan 参数模型（零字段——恒生成下一完整自然周）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AdjustLearningPlanParams(BaseModel):
+    """adjust_learning_plan 参数模型（plan_id 可选，缺省当前生效计划）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    plan_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="目标计划 id（可选正整数，缺省调整当前生效计划）",
+    )
+
+
+class GenerateLearningReportParams(BaseModel):
+    """generate_learning_report 参数模型（report_type 可选，缺省 weekly）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    report_type: Literal["daily", "weekly", "monthly"] | None = Field(
+        default=None,
+        description="报告类型（可选：daily 日报 / weekly 周报 / monthly 月报，缺省 weekly）",
+    )
+
+
+@tool_endpoint("get_learning_plan", GetLearningPlanParams)
+async def get_learning_plan(
+    db: Session, user_id: int, params: GetLearningPlanParams
+) -> ToolResult:
+    """获取当前生效的学习计划及条目（无计划返回说明性 dict 非错误信封）。"""
+    data = get_current_plan_service(db, user_id)
+    if data is None:
+        return {"plan": None, "message": "当前没有进行中的学习计划"}
+    return data
+
+
+@tool_endpoint("generate_learning_plan", GenerateLearningPlanParams)
+async def generate_learning_plan(
+    db: Session, user_id: int, params: GenerateLearningPlanParams
+) -> ToolResult:
+    """生成下一个完整自然周学习计划（薄委托 services/plan.generate_plan）。"""
+    return await generate_plan_service(db, user_id)
+
+
+@tool_endpoint("adjust_learning_plan", AdjustLearningPlanParams)
+async def adjust_learning_plan(
+    db: Session, user_id: int, params: AdjustLearningPlanParams
+) -> ToolResult:
+    """调整学习计划生成新版本（薄委托 services/plan.adjust_plan，零 LLM）。
+
+    plan_id 缺省定位当前 active；无 active 时服务层抛 BizException(1007)
+    由装饰器转为 error 信封。
+    """
+    return await adjust_plan_service(db, user_id, params.plan_id)
+
+
+@tool_endpoint("generate_learning_report", GenerateLearningReportParams)
+async def generate_learning_report(
+    db: Session, user_id: int, params: GenerateLearningReportParams
+) -> ToolResult:
+    """生成学习成长报告（薄委托 services/report.generate_report；周期取最近完整周期）。"""
+    payload = _ReportGenerateIn(report_type=params.report_type or "weekly")
+    return await generate_report_service(db, user_id, payload)

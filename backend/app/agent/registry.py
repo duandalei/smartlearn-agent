@@ -1,15 +1,19 @@
-"""AI Agent 工具注册表（P10）：TOOLS_SCHEMA 与 TOOL_MAP 的单一事实来源。
+"""AI Agent 工具注册表（P10 + P12）：TOOLS_SCHEMA 与 TOOL_MAP 的单一事实来源。
 
-本阶段注册 8 个工具（名称与 PROJECT_CONTEXT §4 工具清单逐字一致）：
+P12 交付后注册 12 个工具（名称与 PROJECT_CONTEXT §4 工具清单逐字一致）：
     get_user_profile / get_learning_records / get_tasks /
     get_knowledge_mastery / get_learning_statistics /
-    search_knowledge_base / create_task / update_task
+    search_knowledge_base / create_task / update_task /
+    get_learning_plan / generate_learning_plan /
+    adjust_learning_plan / generate_learning_report
 
-「P12 接入」标注：get_learning_plan / generate_learning_plan /
-adjust_learning_plan / generate_learning_report 4 个工具依赖 P12
-规划与报告服务，留待 P12 注册——本阶段不造桩、不注册进
-TOOLS_SCHEMA / TOOL_MAP（禁止占位桩函数：LLM 会调用一个不存在
-的真实实现）。
+计划与报告四工具（P12 接入，2026-10-23 交付）：get_learning_plan
+读取当前生效计划；generate_learning_plan 生成下一完整自然周
+（失败自动降级规则模式）；adjust_learning_plan 动态调整并给出
+具体理由（零 LLM 纯确定性）；generate_learning_report 生成
+日报/周报/月报（失败自动降级模板总结）。不设 get_plan_diff
+独立工具——diff 由 adjust_learning_plan 返回值携带（工具数量
+越少模型选择越准）。
 
 一致性结构保证：TOOLS_SCHEMA 与 TOOL_MAP 均由 ``_TOOL_SPECS``
 列表推导——工具名集合相等是构造性事实而非纪律约定；P12 扩展
@@ -24,8 +28,12 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.agent.tools import (
+    AdjustLearningPlanParams,
     CreateTaskParams,
+    GenerateLearningPlanParams,
+    GenerateLearningReportParams,
     GetKnowledgeMasteryParams,
+    GetLearningPlanParams,
     GetLearningRecordsParams,
     GetLearningStatisticsParams,
     GetTasksParams,
@@ -33,8 +41,12 @@ from app.agent.tools import (
     SearchKnowledgeBaseParams,
     UpdateTaskParams,
     ToolFunc,
+    adjust_learning_plan,
     create_task,
+    generate_learning_plan,
+    generate_learning_report,
     get_knowledge_mastery,
+    get_learning_plan,
     get_learning_records,
     get_learning_statistics,
     get_tasks,
@@ -253,6 +265,75 @@ _TOOL_SPECS: list[ToolSpec] = [
             "null 等同于不修改（无法通过本工具清空字段值）。不支持修改 "
             "status——任务状态流转请由用户在任务页操作，本工具不支持修改 "
             "status。更新成功返回更新后的完整任务快照。"
+        ),
+    ),
+    ToolSpec(
+        name="get_learning_plan",
+        func=get_learning_plan,
+        params_model=GetLearningPlanParams,
+        description=(
+            "获取当前用户生效中的学习计划及全部条目（周视图课表）。当用户问"
+            "『我现在的计划是什么 / 这周怎么安排的 / 今天该学什么』时调用。"
+            "本工具不需要任何参数。返回 {plan, items}：plan 为计划版本对象"
+            "（含 id、version、start_date、end_date、status、adjust_reason"
+            "（若被 AI 调整过则含具体理由）等）；items 按日期与时间升序排列，"
+            "每条含 plan_date（安排日期）、start_time / end_time（时段，休息"
+            "条目为 null）、topic（本次学什么）、task_id（关联任务）、"
+            "estimated_minutes（预计时长分钟）、priority（优先级）；周五为"
+            "「休息 / 复习」条目。当前没有进行中的学习计划时返回 "
+            "{plan: null, message: \"当前没有进行中的学习计划\"}——这是正常"
+            "状态不是错误。"
+        ),
+    ),
+    ToolSpec(
+        name="generate_learning_plan",
+        func=generate_learning_plan,
+        params_model=GenerateLearningPlanParams,
+        description=(
+            "为当前用户生成下一个完整自然周的学习计划（写操作，7 天结构化"
+            "课表）。当用户说『帮我制定下周学习计划 / 安排下周学习』时调用。"
+            "本工具不需要任何参数，恒生成下一个完整自然周（下周一到下周日）。"
+            "返回 {plan, items, unplaced_tasks, generated_by}：items 为 7 天"
+            "条目（每日总时长不超过档案设定的每日可学习时长、周五固定休息、"
+            "逾期与临期任务优先安排）；unplaced_tasks 为容量不足未排入的候选"
+            "（对应任务已创建，可在任务页单独安排）；generated_by 为 llm"
+            "（AI 规划内容）或 rules（降级规则模式）——生成失败时自动降级为"
+            "规则模式，仍会返回可用结果，不会报错。"
+        ),
+    ),
+    ToolSpec(
+        name="adjust_learning_plan",
+        func=adjust_learning_plan,
+        params_model=AdjustLearningPlanParams,
+        description=(
+            "动态调整当前用户的学习计划（写操作，核心能力）。当用户说『帮我"
+            "调整一下这周的计划 / 计划跟不上了 / 任务完不成』，或检测到任务"
+            "未完成且截止临近、近期学习时长不足时调用。参数：plan_id（可选"
+            "正整数，目标计划 id，缺省调整当前生效计划）。计划调整会生成新"
+            "版本并给出具体理由（含调整到哪天、顺延了什么），原版本保留为"
+            "历史快照可随时对比。返回 {plan, adjust_reason, diff, adjusted}："
+            "adjust_reason 为具体中文理由（含任务名与从哪天调整到哪天）；"
+            "diff 为结构化改动清单（moved / added / removed，每条含主题、"
+            "原位置、新位置与原因）；无可调整项时 adjusted=false 且不新建"
+            "版本。当前没有进行中的学习计划时返回 {\"error\": \"当前没有"
+            "进行中的学习计划\"}。"
+        ),
+    ),
+    ToolSpec(
+        name="generate_learning_report",
+        func=generate_learning_report,
+        params_model=GenerateLearningReportParams,
+        description=(
+            "为当前用户生成学习成长报告（写操作）。当用户说『给我生成一份"
+            "周报 / 学习总结 / 月报 / 日报』时调用。参数：report_type（可选："
+            "daily 日报 / weekly 周报 / monthly 月报，缺省 weekly；周期取最近"
+            "完整周期）。返回报告对象：summary 为自然语言总结（中文、引用"
+            "真实数字——学习时长、完成任务数、完成率、学习最多的方向、薄弱"
+            "知识点、阶段进步与建议）；content 为结构化统计（total_minutes、"
+            "task_completed、completion_rate、top_direction、weak_points、"
+            "progress、advice 数组）。报告数字全部来自数据库统计，不是估算；"
+            "AI 总结失败时自动降级模板模式（仍含全部真实数字），仍会返回"
+            "可用结果。"
         ),
     ),
 ]
