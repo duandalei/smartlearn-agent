@@ -18,7 +18,7 @@ import { useRouter } from 'vue-router'
 import AskComposer from '@/components/ask/AskComposer.vue'
 import MessageBubble from '@/components/ask/MessageBubble.vue'
 import { getChatHistory, streamChatQa } from '@/api/chat'
-import type { AskMessage, ChatHistoryItem, QaScope, QaSourceItem } from '@/types'
+import type { AskMessage, ChatHistoryItem, QaSourceItem } from '@/types'
 
 const router = useRouter()
 
@@ -26,7 +26,6 @@ const router = useRouter()
 const HISTORY_PAGE_SIZE = 10
 
 const messages = ref<AskMessage[]>([])
-const scope = ref<QaScope>('all')
 const streaming = ref(false)
 
 /** 历史分页状态（「加载更早的问答」）。 */
@@ -84,7 +83,7 @@ async function onAsk(question: string): Promise<void> {
 
   try {
     await streamChatQa(
-      { question, scope: scope.value },
+      { question },
       {
         // sources 即时写入（卡片先于回答完成出现，spec 5.4.1 规则 1）。
         onSources: (event) => {
@@ -226,7 +225,7 @@ onMounted(() => {
       </div>
 
       <div class="composer-area">
-        <AskComposer v-model="scope" :disabled="streaming" @ask="onAsk" />
+        <AskComposer :disabled="streaming" @ask="onAsk" />
       </div>
     </el-card>
   </div>

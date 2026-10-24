@@ -158,7 +158,7 @@ onUnmounted(() => {
       </el-col>
       <el-col :xs="24" :lg="16">
         <el-card shadow="never" class="kb-card">
-          <template #header><span>文档列表（个人库 + 公共库）</span></template>
+          <template #header><span>文档列表（个人库）</span></template>
           <DocumentTable
             :items="items"
             :loading="loading"

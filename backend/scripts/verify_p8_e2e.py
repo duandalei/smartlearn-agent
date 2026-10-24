@@ -9,7 +9,7 @@
 - 场景 4：Embedding 不可用降级——上传仍 indexed、检索 mode=offline；
 - 场景 5：扫描件 failed 固定文案 + chunk_count=0 + 重索引可重试闭环；
 - 场景 6：列表字段完整性（chunk_count/file_size/error_msg/scope/status，
-  对齐用户实测口径：公共文档重索引后 9/8/8/8 与文件大小展示）；
+  对齐用户实测口径：演示文档重索引后 9/8/8/8 与文件大小展示）；
 - 组 8.1 既有接口回归：/health、列表分页结构、详情 404 防枚举、
   /knowledge-chunks 全局端点零改动。
 
@@ -93,38 +93,46 @@ def main() -> None:
 
     Base.metadata.create_all(engine)
 
-    with TestClient(app) as client:
-        # ------------------------------------------------------------------
-        # 公共库播种（模拟用户本机已重索引完成的 4 篇公共文档状态）
-        # ------------------------------------------------------------------
-        print("场景 6 前置：播种 4 篇公共文档（真实离线流水线）")
+    def seed_demo_docs(user_id: int) -> None:
+        """把 4 篇演示文档播种到指定用户的个人库并跑真实离线流水线。"""
         from app.db.session import SessionLocal
-        from app.models.enums import KnowledgeItemStatus, KnowledgeScope, KnowledgeSourceType
+        from app.models.enums import (
+            KnowledgeItemStatus,
+            KnowledgeScope,
+            KnowledgeSourceType,
+        )
         from app.models.knowledge import KnowledgeItem
         from app.services.knowledge import process_document
 
-        kb_dir = BACKEND_ROOT.parent / "data" / "public_kb"
-        files = sorted(kb_dir.glob("*.md"))
-        public_ids: list[int] = []
+        seed_dir = BACKEND_ROOT.parent / "data" / "uploads" / "1"
+        names = [
+            "1_ml_basics.md",
+            "2_linear_algebra_notes.md",
+            "3_probability_formulas.md",
+            "4_ds_cheatsheet.md",
+        ]
+        files = [seed_dir / name for name in names]
+        item_ids: list[int] = []
         with SessionLocal() as db:
             for md_file in files:
                 item = KnowledgeItem(
-                    user_id=None,
-                    title=md_file.stem,
+                    user_id=user_id,
+                    title=md_file.stem.split("_", 1)[-1],
                     source_type=KnowledgeSourceType.MD,
-                    file_path=f"data/public_kb/{md_file.name}",
-                    scope=KnowledgeScope.PUBLIC,
+                    file_path=f"data/uploads/1/{md_file.name}",
+                    scope=KnowledgeScope.PERSONAL,
                     status=KnowledgeItemStatus.PENDING,
                     chunk_count=0,
                     file_size=md_file.stat().st_size,
                 )
                 db.add(item)
                 db.flush()
-                public_ids.append(item.id)
+                item_ids.append(item.id)
             db.commit()
-        for pid in public_ids:
-            asyncio.run(process_document(pid))
+        for item_id in item_ids:
+            asyncio.run(process_document(item_id))
 
+    with TestClient(app) as client:
         # ------------------------------------------------------------------
         # 用户注册
         # ------------------------------------------------------------------
@@ -134,21 +142,28 @@ def main() -> None:
         )
         assert resp.status_code == 200, resp.text
         headers = {"Authorization": f"Bearer {resp.json()['data']['access_token']}"}
+        user_id = client.get("/api/v1/auth/me", headers=headers).json()["data"]["id"]
 
         # ------------------------------------------------------------------
-        # 场景 6：列表字段完整性（公共文档重索引后）
+        # 场景 6 前置：播种 4 篇演示文档到当前用户个人库
         # ------------------------------------------------------------------
-        print("\n场景 6：公共文档列表字段（chunk_count / file_size / scope / status）")
+        print("场景 6 前置：播种 4 篇演示文档（真实离线流水线，仅个人库）")
+        seed_demo_docs(user_id)
+
+        # ------------------------------------------------------------------
+        # 场景 6：列表字段完整性（演示文档重索引后）
+        # ------------------------------------------------------------------
+        print("\n场景 6：演示文档列表字段（chunk_count / file_size / scope / status）")
         resp = client.get("/api/v1/knowledge/items?page=1&page_size=50", headers=headers)
         data = resp.json()["data"]
-        public_rows = [r for r in data["items"] if r["scope"] == "public"]
-        check("公共文档 4 篇可见", len(public_rows) == 4, f"got {len(public_rows)}")
-        check("全部 indexed", all(r["status"] == "indexed" for r in public_rows))
-        check("chunk_count 全部 > 0（真实分块数 8~12）", all(8 <= r["chunk_count"] <= 12 for r in public_rows), str([(r["title"], r["chunk_count"]) for r in public_rows]))
-        check("file_size 全部非空（前端展示大小列）", all(r["file_size"] and r["file_size"] > 0 for r in public_rows))
-        check("error_msg 全部为空", all(r["error_msg"] is None for r in public_rows))
-        ml = next(r for r in public_rows if r["title"] == "ml_basics")
-        ds = next(r for r in public_rows if r["title"] == "ds_cheatsheet")
+        demo_rows = [r for r in data["items"] if r["scope"] == "personal"]
+        check("演示文档 4 篇可见", len(demo_rows) == 4, f"got {len(demo_rows)}")
+        check("全部 indexed", all(r["status"] == "indexed" for r in demo_rows))
+        check("chunk_count 全部 > 0（真实分块数 8~12）", all(8 <= r["chunk_count"] <= 12 for r in demo_rows), str([(r["title"], r["chunk_count"]) for r in demo_rows]))
+        check("file_size 全部非空（前端展示大小列）", all(r["file_size"] and r["file_size"] > 0 for r in demo_rows))
+        check("error_msg 全部为空", all(r["error_msg"] is None for r in demo_rows))
+        ml = next(r for r in demo_rows if r["title"] == "ml_basics")
+        ds = next(r for r in demo_rows if r["title"] == "ds_cheatsheet")
         check("chunk_count 分布 == 用户实测 9/8/8/8（9 属数据结构速查）", ds["chunk_count"] == 9 and ml["chunk_count"] == 8, f"ds={ds['chunk_count']} ml={ml['chunk_count']}")
 
         # ------------------------------------------------------------------
@@ -177,7 +192,7 @@ def main() -> None:
 
         # ------------------------------------------------------------------
         # 场景 2：检索「Transformer 的注意力机制」Top-1 命中第六章
-        # （独立用户：仅公共库可见，排除个人文档词面竞争干扰）
+        # （独立用户：只播种演示文档，排除场景 1 上传文档的词面竞争）
         # ------------------------------------------------------------------
         print("\n场景 2：语义检索 Top-1 命中（离线兜底模式）")
         resp = client.post(
@@ -185,6 +200,10 @@ def main() -> None:
             json={"username": "e2e_searcher", "password": "Passw0rd123!", "confirm_password": "Passw0rd123!"},
         )
         search_headers = {"Authorization": f"Bearer {resp.json()['data']['access_token']}"}
+        searcher_id = client.get(
+            "/api/v1/auth/me", headers=search_headers
+        ).json()["data"]["id"]
+        seed_demo_docs(searcher_id)
         resp = client.post(
             "/api/v1/knowledge/search",
             json={"query": "Transformer 的注意力机制", "top_k": 5},

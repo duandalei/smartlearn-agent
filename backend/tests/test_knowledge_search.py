@@ -3,7 +3,7 @@
 覆盖：响应结构（mode/results 与 hit 三字段）/ score 降序与取值
 范围 / 参数校验（空查询、超长、top_k 越界 → 422+1001）/ 空库
 返回空 results / mode 双取值（offline 真实兜底路径 + online 假
-client 按 mode 选库不串库）/ 公共库检索覆盖。
+client 按 mode 选库不串库）/ 检索仅覆盖个人库。
 """
 
 from __future__ import annotations
@@ -15,15 +15,6 @@ import pytest
 import app.rag.embedding as embedding_module
 
 from tests.conftest import upload_document
-
-# 公共文档种子标题（data/public_kb 4 篇 stem）。
-_PUBLIC_TITLES = {
-    "ml_basics",
-    "ds_cheatsheet",
-    "probability_formulas",
-    "linear_algebra_notes",
-}
-
 
 def _search_raw(client: Any, user: dict[str, Any], payload: dict[str, Any]) -> Any:
     """发检索请求返回原始响应。"""
@@ -68,7 +59,7 @@ def _install_fake_online(monkeypatch: Any) -> None:
 def test_search_response_structure_and_ordering(
     app_client: Any,
     user_a: dict[str, Any],
-    public_docs: list[int],
+    demo_docs: list[int],
     offline_embedding: None,
 ) -> None:
     """响应结构：data={mode,results}，hit 含六字段（P9 裁决 #3 新增
@@ -133,13 +124,13 @@ def test_search_empty_library_returns_empty(
 def test_search_offline_mode_hits_with_heading(
     app_client: Any,
     user_a: dict[str, Any],
-    public_docs: list[int],
+    demo_docs: list[int],
     offline_embedding: None,
 ) -> None:
     """offline 模式：真实兜底路径命中，heading_path 并入 source_title。"""
     data = _search(app_client, user_a, "什么是机器学习", top_k=5)
     assert data["mode"] == "offline"
-    assert data["results"], "公共文档必须可检索命中"
+    assert data["results"], "演示文档必须可检索命中"
     assert any(
         "»" in hit["source_title"] for hit in data["results"]
     ), "带标题路径的命中应以 '»' 连接标题与路径"
@@ -168,7 +159,7 @@ def test_search_online_mode_uses_online_collection(
 def test_search_online_mode_skips_offline_library(
     app_client: Any,
     user_a: dict[str, Any],
-    public_docs: list[int],
+    demo_docs: list[int],
     monkeypatch: Any,
 ) -> None:
     """模式选库不串库：离线库有数据但在线查询只查在线库（空）。"""
@@ -178,18 +169,18 @@ def test_search_online_mode_skips_offline_library(
     assert data["results"] == [], "在线查询不得命中离线空间向量"
 
 
-def test_search_covers_public_library_for_any_user(
+def test_search_scope_is_personal_only(
     app_client: Any,
     user_a: dict[str, Any],
     user_b: dict[str, Any],
-    public_docs: list[int],
+    demo_docs: list[int],
     offline_embedding: None,
 ) -> None:
-    """公共库覆盖：任何用户检索公共关键词均命中公共文档来源。"""
-    for user in (user_a, user_b):
-        data = _search(app_client, user, "机器学习基础概念", top_k=20)
-        assert data["results"], f"{user['username']} 应命中公共文档"
-        for hit in data["results"]:
-            title_root = hit["source_title"].split(" » ")[0]
-            assert title_root in _PUBLIC_TITLES, hit["source_title"]
+    """检索仅覆盖个人库：A 命中自己的演示文档，B 空库无结果。"""
+    data_a = _search(app_client, user_a, "机器学习基础概念", top_k=20)
+    assert data_a["results"], "A 应命中自己的个人文档"
+    assert all(hit["scope"] == "personal" for hit in data_a["results"])
+
+    data_b = _search(app_client, user_b, "机器学习基础概念", top_k=20)
+    assert data_b["results"] == [], "B 个人库为空，不得命中 A 的文档"
 

@@ -162,12 +162,15 @@ def upload_document(client: Any, user: dict[str, Any], filename: str, content: b
 
 
 @pytest.fixture
-def public_docs(app_client: Any, offline_embedding: None) -> list[int]:
-    """播种 4 篇公共文档（真实种子口径）并跑真实离线流水线。
+def demo_docs(
+    app_client: Any, user_a: dict[str, Any], offline_embedding: None
+) -> list[int]:
+    """播种 4 篇演示文档到 user_a 个人库并跑真实离线流水线。
 
-    建档模拟 ``db/init_db.py`` 种子（scope=public、user_id=None、
-    file_path 相对项目根），随后逐篇 ``process_document``（本地
-    兜底向量化真实入库）；返回 item id 列表（按文件名排序）。
+    源文件即 demo 用户的上传文件（``data/uploads/1/1_*.md`` ~
+    ``4_*.md``），建档模拟 ``db/init_db.py`` 种子（scope=personal、
+    user_id=user_a），随后逐篇 ``process_document``（本地兜底向量化
+    真实入库）；返回 item id 列表（按文件名排序）。公共库能力已移除。
     """
     import asyncio
 
@@ -181,18 +184,27 @@ def public_docs(app_client: Any, offline_embedding: None) -> list[int]:
     from app.models.knowledge import KnowledgeItem
     from app.services.knowledge import process_document
 
-    kb_dir = PROJECT_ROOT / "data" / "public_kb"
-    files = sorted(kb_dir.glob("*.md"))
-    assert files, f"公共文档种子目录为空: {kb_dir}"
+    user_id = app_client.get(
+        "/api/v1/auth/me", headers=user_a["headers"]
+    ).json()["data"]["id"]
+    seed_dir = PROJECT_ROOT / "data" / "uploads" / "1"
+    names = [
+        "1_ml_basics.md",
+        "2_linear_algebra_notes.md",
+        "3_probability_formulas.md",
+        "4_ds_cheatsheet.md",
+    ]
+    files = [seed_dir / name for name in names]
+    assert all(p.is_file() for p in files), f"演示上传文件缺失: {seed_dir}"
     item_ids: list[int] = []
     with SessionLocal() as db:
         for md_file in files:
             item = KnowledgeItem(
-                user_id=None,
-                title=md_file.stem,
+                user_id=user_id,
+                title=md_file.stem.split("_", 1)[-1],
                 source_type=KnowledgeSourceType.MD,
-                file_path=f"data/public_kb/{md_file.name}",
-                scope=KnowledgeScope.PUBLIC,
+                file_path=f"data/uploads/1/{md_file.name}",
+                scope=KnowledgeScope.PERSONAL,
                 status=KnowledgeItemStatus.PENDING,
                 chunk_count=0,
                 file_size=md_file.stat().st_size,

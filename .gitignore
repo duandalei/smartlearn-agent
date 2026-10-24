@@ -34,11 +34,17 @@ frontend/.env.*.local
 .DS_Store
 Thumbs.db
 
-# ---- 运行时数据（保留公共知识库种子资料）----
+# ---- 运行时数据（保留 4 篇演示上传文件，其余不进库）----
 data/*
 !data/.gitkeep
-!data/public_kb/
-!data/public_kb/**
+!data/uploads/
+data/uploads/*
+!data/uploads/1/
+data/uploads/1/*
+!data/uploads/1/1_ml_basics.md
+!data/uploads/1/2_linear_algebra_notes.md
+!data/uploads/1/3_probability_formulas.md
+!data/uploads/1/4_ds_cheatsheet.md
 
 # 构建产物 / 缓存
 *.log

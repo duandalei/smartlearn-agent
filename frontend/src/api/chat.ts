@@ -42,7 +42,7 @@ const CODE_TOKEN_INVALID = 1003
  *   「网络中断，请重试」经 onError 通知（已收到的 delta 保留，
  *   由视图层决定呈现）。
  *
- * @param payload 请求体（question + scope）。
+ * @param payload 请求体（question）。
  * @param handlers 四事件回调。
  * @returns Promise<void> 流终结时 resolve。
  */

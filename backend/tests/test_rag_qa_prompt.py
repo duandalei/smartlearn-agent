@@ -162,7 +162,7 @@ _SOURCES = [
         "score": 0.7331,
         "item_id": 5,
         "chunk_index": 2,
-        "scope": "public",
+        "scope": "personal",
     },
     {
         "content": "多头注意力将 QKV 投影到多个子空间并行计算。",
@@ -170,7 +170,7 @@ _SOURCES = [
         "score": 0.664,
         "item_id": 5,
         "chunk_index": 3,
-        "scope": "public",
+        "scope": "personal",
     },
 ]
 

@@ -1,5 +1,7 @@
 # 演示数据重置 + 演示脚本 + README 补齐 实现方案（DESIGN_DEMO_RESET）
 
+> **变更说明（2026-10-25，公共库能力已移除）**：知识库现仅保留个人库（`scope=personal`）。4 篇演示文档作为 demo 用户的普通上传文件放在 `data/uploads/1/`（不再有 `data/public_kb/` / `data/demo_kb/`），重置时由清理环节显式保留，数量硬门禁按这 4 个 `file_path` 精确匹配。下文涉及「公共库」的历史设计条目仅作演进记录，运行口径以本说明与现行代码为准。
+
 > feature：`demo_reset`
 > 阶段：P13 收尾批次（只新增脚本与文档，**禁止修改 `backend/app/**`、`frontend/src/**`、`backend/tests/**`**；不执行 git commit）
 > 上游输入：`.codeartsdoer/specs/demo_reset/spec.md`（340 行，唯一需求输入，已含 5 处定点修订；修订处口径以 spec 为准）
@@ -36,13 +38,13 @@
 
 | 需求功能 | 存量功能 | 代码位置 | 匹配度 |
 |---|---|---|---|
-| 建表 + 全套演示种子数据（demo 账号 / 目标 / 任务 / 记录 / 计划 / 周报 / 错题 / 掌握度 / 公共文档元数据） | `init_db()`：`create_all` 建 16 表 + 「demo 用户存在」幂等开关 + 单事务种子 + 摘要打印 + `__main__` 入口（`python -m app.db.init_db`） | `backend/app/db/init_db.py:1139-1167`（入口）、`1087-1106`（`_seed_all` 编排） | 100% |
+| 建表 + 全套演示种子数据（demo 账号 / 目标 / 任务 / 记录 / 计划 / 周报 / 错题 / 掌握度 / 演示文档元数据） | `init_db()`：`create_all` 建 16 表 + 「demo 用户存在」幂等开关 + 单事务种子 + 摘要打印 + `__main__` 入口（`python -m app.db.init_db`） | `backend/app/db/init_db.py:1139-1167`（入口）、`1087-1106`（`_seed_all` 编排） | 100% |
 | 真实重索引流水线（解析 → 切分 → 向量化 → 入库） | `process_document(item_id)`：async 流水线，状态机入口校验、扫描件/编码/空分块文案、`SessionLocal()` 独立短事务、先向量库后关系库写序 | `backend/app/services/knowledge.py:267-425` | 100% |
-| 重索引前置动作（删旧 chunks + 置 parsing + chunk_count 清零 + 公共文档允许） | `reindex_item(db, user, item_id)`：同步函数，可见性校验、`pending/parsing` 拒绝（1007）、`db.commit()` | `backend/app/services/knowledge.py:507-552` | 100% |
+| 重索引前置动作（删旧 chunks + 置 parsing + chunk_count 清零 + 演示文档允许） | `reindex_item(db, user, item_id)`：同步函数，可见性校验、`pending/parsing` 拒绝（1007）、`db.commit()` | `backend/app/services/knowledge.py:507-552` | 100% |
 | embedding 不可用时的自动降级 | `embed_texts_with_fallback`：在线失败内部降级兜底向量并返回 `mode="offline"`；`embed_texts_local` 无条件兜底 | `backend/app/rag/embedding.py:220-263`；`services/knowledge.py:349-359`（编排） | 100% |
 | 向量库单例重置机制 | `_reset_vector_store()`：清模块级懒加载单例 | `backend/app/rag/vectorstore.py:102-111` | 100%（子进程模型下为免调用的保险） |
-| 运行期路径配置单一来源 | `settings.DATABASE_URL` / `CHROMA_DIR` / `UPLOAD_DIR` / `PUBLIC_KB_DIR`，`.env` 覆盖链（项目根优先、backend/ 其次） | `backend/app/core/config.py:40-43, 96, 99, 128-129` | 100% |
-| 公共知识库 4 篇源文档 | `data/public_kb/`：ml_basics / linear_algebra_notes / probability_formulas / ds_cheatsheet（4 个 .md，已核对存在）；种子元数据 `file_path` 与其逐字对应 | `data/public_kb/`；`init_db.py:790-797` | 100% |
+| 运行期路径配置单一来源 | `settings.DATABASE_URL` / `CHROMA_DIR` / `UPLOAD_DIR`，`.env` 覆盖链（项目根优先、backend/ 其次） | `backend/app/core/config.py:40-43, 96, 99, 128` | 100% |
+| 演示知识库 4 篇源文档 | `data/uploads/1/`：1_ml_basics / 2_linear_algebra_notes / 3_probability_formulas / 4_ds_cheatsheet（4 个 .md，已核对存在）；种子元数据 `file_path` 与其逐字对应 | `data/uploads/1/`；`init_db.py:790-797` | 100% |
 | 一键启动入口（README 复现链路的既有锚点） | `start.bat`（新窗口后端 + 前端，缺 `.env` 自动复制模板）、`start.sh`（后台后端 + 前台前端，trap 关后端） | `start.bat:1-29`、`start.sh:1-35` | 100% |
 | 脚本执行惯例（sys.path 注入、独立运行、防 pytest 收集） | `scripts/verify_*.py` 系列：`sys.path.insert(0, backend)` 后 import app；`scripts/conftest.py` 用 `collect_ignore` 防 `test_tools.py` 误收集 | `backend/scripts/verify_p7_dashboard.py:30-32`、`backend/scripts/conftest.py:14` | 100%（惯例复用） |
 | 五步演示剧本原始素材 | 需求文档第 32 节：创建目标 AI 拆解 → 上传资料 → Agent 分析 → 生成下周计划 → 任务未完成动态调整 → Dashboard 收尾 | `docs/需求文档.md:1146-1248` | 100%（剧本骨架来源，口播词需新写） |
@@ -67,7 +69,7 @@
 
 - `backend/scripts/reset_demo_data.py`
   - 父进程角色（默认入口）：`main(argv)`——参数解析 → 配置探测（子进程）→ 占用检测 → 交互确认 → 备份 → 删除 → 初始化子进程 → 重索引子进程 → 只读验证 + 摘要。输入：CLI 参数；输出：stdout 摘要 + 退出码。
-  - worker 角色（`--worker-reindex` 隐藏入口）：`_worker_reindex()`——import app 服务层，查 4 篇公共文档，逐篇 `reindex_item` + `await process_document`，逐篇打印 `标题 / chunk_count / mode`。输入：无（环境即输入）；输出：逐篇结果行 + 退出码。
+  - worker 角色（`--worker-reindex` 隐藏入口）：`_worker_reindex()`——import app 服务层，查 4 篇演示文档，逐篇 `reindex_item` + `await process_document`，逐篇打印 `标题 / chunk_count / mode`。输入：无（环境即输入）；输出：逐篇结果行 + 退出码。
   - 依赖关系：父进程 → `subprocess` → `python -m app.db.init_db`（存量）与 `python scripts/reset_demo_data.py --worker-reindex`（自身）；worker → `app.services.knowledge` / `app.db.session` / `app.models`（存量只读复用）。
 
 **② 演示分镜脚本（1 个新文档）**
@@ -91,17 +93,17 @@
 - **业务规则**：幂等开关**只有**一个——「demo 用户存在则跳过全部插入」（`init_db.py:1151-1155`）。推论：不删旧库直接跑初始化，种子被整体跳过、演示数据缺失——这正是 spec §5.1.1 规则 5「必须先删库再初始化」的代码依据。
 - **进程期绑定（关键约束）**：`init_db.py:37` `from app.db.session import SessionLocal, engine`；`session.py:41-46` `engine = create_engine(settings.DATABASE_URL, ...)` 在 **import 期**完成绑定，同进程内再无重绑 API。推论：「先 import 再删库」的执行序会让初始化仍写旧连接已打开/已缓存的库句柄——这是 spec §4.2 规则 4 点名的隐患，设计必须以进程隔离消解（2.1.3-A）。
 - **可用性正面事实**：`init_db.py:1146-1149` 自带「sqlite URL → 父目录 mkdir」逻辑，库文件被删后由子进程执行初始化会自建目录重建，无需编排层代建。
-- **公共文档种子的口径注意**：`_seed_knowledge`（`init_db.py:781-844`）写入的 4 篇公共文档状态直接置 `INDEXED`、`chunk_count` 为预置值（2/1/1/0）、`embedding_id=NULL`——即种子态是「元数据齐但向量未建」的占位态（docstring 明示「文件本体由 RAG / P13 阶段放置」）。推论：重置流程的「真实重索引」不是锦上添花而是**必要环节**——不重索引则向量库为空、检索演示必败；重索引后 `process_document` 会以真实切分结果**覆盖** `chunk_count`（`knowledge.py:402-404`），与 spec §5.1.1 规则 6「分块数来自真实切分」自洽。
+- **演示文档种子的口径注意**：`_seed_knowledge`（`init_db.py:781-844`）写入的 4 篇演示文档状态直接置 `INDEXED`、`chunk_count` 为预置值（2/1/1/0）、`embedding_id=NULL`——即种子态是「元数据齐但向量未建」的占位态（docstring 明示「文件本体由 RAG / P13 阶段放置」）。推论：重置流程的「真实重索引」不是锦上添花而是**必要环节**——不重索引则向量库为空、检索演示必败；重索引后 `process_document` 会以真实切分结果**覆盖** `chunk_count`（`knowledge.py:402-404`），与 spec §5.1.1 规则 6「分块数来自真实切分」自洽。
 - **扩展点**：无（不修改 init_db 一行；`__main__` 入口即子进程调用形态）。
 
 ### 1.2.2 `reindex_item` + `process_document` 的调用契约（worker 子进程的直接复用面）
 
 - **`reindex_item`（同步）**：入参 `(db: Session, user: User, item_id: int)`；出参 `KnowledgeItem`（已置 parsing）；异常 = `BizException`（1005 不可见/不存在；1007 pending/parsing 竞态拒绝）。副作用：`KnowledgeChunk` 旧行同步删除 + `status=parsing` + `chunk_count=0` + `error_msg=None`，**同一 `db` 事务内 commit**（`knowledge.py:532-548`）。
-  - **对脚本的三点约束推导**：① 需要真实 `User` ORM 对象做可见性校验——worker 内以 `username=="demo"` 查出（初始化子进程先于 worker 完成，demo 必存在）；公共文档 `scope=PUBLIC` 对任意用户可见（`visibility_filters`，`knowledge.py:111-130`），校验必过。② 公共文档允许重索引是 spec 裁决过的既有能力（docstring `knowledge.py:512-514`），脚本不构成越权。③ 调用后文档处于 parsing 态，**必须**紧接着驱动 `process_document`，否则文档卡在中间态——两调用在 worker 内是原子编排单元。
+  - **对脚本的三点约束推导**：① 需要真实 `User` ORM 对象做可见性校验——worker 内以 `username=="demo"` 查出（初始化子进程先于 worker 完成，demo 必存在）；演示文档归属 demo 个人库（`scope=personal`），worker 以 demo 用户调用 `reindex_item`，可见性校验必过。② 演示文档允许重索引是 spec 裁决过的既有能力（docstring `knowledge.py:512-514`），脚本不构成越权。③ 调用后文档处于 parsing 态，**必须**紧接着驱动 `process_document`，否则文档卡在中间态——两调用在 worker 内是原子编排单元。
 - **`process_document`（async）**：入参 `(item_id: int)`；无出参（结果落库）；内部每次状态变更自建 `SessionLocal()` 短事务；失败一律置 `failed` + 阶段化 `error_msg`（解析/切分/向量化/向量入库/分块落库五类前缀），**不抛异常给调用方**。
   - **对脚本的三点约束推导**：① 「失败不抛异常」意味着 worker 不能以 try/except 判成败，必须在每篇 await 返回后**用全新 session 回查数据库**判定终态（`status==indexed 且 chunk_count>0 且与实际分块行数一致` 为成功，三条件口径详见 2.2.2-B；`failed` 取 `error_msg` 如实上报）。② async 驱动用 `asyncio.run()` 单事件循环即可；4 篇**串行**而非 `gather`——并行会增加 SQLite 写锁竞争与 Chroma 并发写复杂度，4 篇小文档串行耗时可控，简单性优先。③ 入口状态机（`knowledge.py:283-298`）只放行 pending/parsing——**禁止**绕过 `reindex_item` 直接对种子态（indexed）文档调 `process_document`（会直接退出不索引），两函数必须成对调用。
 - **embedding 降级链**：`embed_texts_local` 无条件计算兜底向量并写 `_local` collection；`embed_texts_with_fallback` 在线失败自动降级返回 `mode="offline"`（`knowledge.py:349-367`）。推论：在线 embedding 不可用时文档仍置 indexed，属**成功路径的降级分支**而非失败——与 spec §5.1.3 场景 3 一致；worker 需透传 mode 供摘要标注「离线兜底索引」。仅当兜底也抛异常（防御性分支）才置 failed。
-- **资源限制**：单文档 20MB 上限、公共文档实测 8~12 块/篇（`knowledge.py:565-568` docstring），4 篇串行全流程在演示机上次分钟级可完成（spec §4.1 的 10 分钟红线充裕）。
+- **资源限制**：单文档 20MB 上限、演示文档实测 8~12 块/篇（`knowledge.py:565-568` docstring），4 篇串行全流程在演示机上次分钟级可完成（spec §4.1 的 10 分钟红线充裕）。
 
 ### 1.2.3 `vectorstore` 单例与 `_reset_vector_store` 的适用边界
 
@@ -124,7 +126,7 @@
 ### 1.2.6 前端页面事实核对（DEMO_SCRIPT 的操作路径输入，只读）
 
 - 登录页 `/login`、Dashboard 为登录后默认页（README §七验证方式 + MainLayout 骨架）；知识库上传后经「轮询文档状态到 `indexed`」再继续是前端既有交互（spec §5.2.1 规则 1 已点名该口径）。
-- 公共文档列表端点：`GET /api/v1/knowledge/items`（`api/v1/knowledge.py:62` 已核对存在），按 `scope=public` 过滤核对 4 条——spec §5.4.1 规则 2.c 已勘误 `/knowledge/public` 端点不存在，本文档与 DEMO_SCRIPT 一律以真实端点为准。
+- 演示文档列表端点：`GET /api/v1/knowledge/items`（`api/v1/knowledge.py:62` 已核对存在），按 4 个演示文件的 `file_path` 精确核对 4 篇——spec §5.4.1 规则 2.c 已勘误 `/knowledge/public` 端点不存在，本文档与 DEMO_SCRIPT 一律以真实端点为准。
 - **约束**：DEMO_SCRIPT 只写「操作路径 + 既有界面元素」级别的描述，不承诺任何前端尚未实现的交互细节；口播词中涉及的徽章/提示以前端现状为准，编写 DEMO_SCRIPT 时需对照前端页面走查（该走查是 tasks 阶段的文档写作动作，本设计不展开逐页核对）。
 ---
 
@@ -160,7 +162,7 @@ node "本地文件系统" as fs {
   [data/smartlearn.db(+wal/shm)]
   [data/chroma/]
   [data/uploads/]
-  [data/public_kb/（只读红线）]
+  [data/uploads/1/ 4 篇演示文件（重置保留）]
   [data/_reset_backup/<时间戳>/]
 }
 
@@ -173,7 +175,7 @@ parent --> fs : 占用检测 / 备份 / 删除\n（每路径类一次，失败�
 parent --> initp : subprocess（删除完成后）
 initp --> fs : 重建 smartlearn.db（16 表 + 种子）
 parent --> worker : subprocess（初始化成功后）
-worker --> fs : 重建 chroma/ 向量（4 篇公共文档）
+worker --> fs : 重建 chroma/ 向量（4 篇演示文档）
 worker --> llm : 在线向量化（失败自动降级兜底）
 parent --> fs : 只读验证（标准库 sqlite3）
 parent --> 演示者 : 结构化摘要 + 退出码
@@ -324,7 +326,7 @@ Verify --> [*] : 打印摘要 [0]
 | 备份 | 中止，**不进入删除** | 3 | 失败现场保留 | 备份失败原因（目录不可写/磁盘不足） |
 | 删除 | 中止（剩余不删）；已删的 db 可从刚完成的备份回滚，chroma/uploads 无回滚义务（spec §4.2-3） | 4 | **保留** | 失败文件 + 回滚指引 |
 | 初始化子进程 | 透传子进程 stderr；提示先按备份回滚 db 再排查 | 5 | **保留** | init_db 原始报错 |
-| 重索引子进程 | 摘要逐篇标示成功/失败及 error_msg；失败篇目禁止显示虚假分块数；公共文档数量 ≠4（种子异常）同属失败——打印实际数量与标题清单，不输出「重置完成」摘要 | 6 | **保留** | 失败篇目 + 阶段化原因 |
+| 重索引子进程 | 摘要逐篇标示成功/失败及 error_msg；失败篇目禁止显示虚假分块数；演示文档数量 ≠4（种子异常）同属失败——打印实际数量与标题清单，不输出「重置完成」摘要 | 6 | **保留** | 失败篇目 + 阶段化原因 |
 | 验证+摘要 | 全绿打印结构化摘要 | 0 | 保留（spec 未授权自动清理备份） | 完整摘要 |
 
 **`--no-backup` 语义边界**：仅跳过 Backup 一步；Clean 及以后各步不变；摘要备份行打印「未备份（--no-backup）」以满足 spec §6.3-3 的显式说明义务；回滚指引在该模式下改写为「无备份可回滚，可再次执行本脚本重建」。
@@ -370,7 +372,7 @@ cd backend && python scripts/reset_demo_data.py [--yes] [--no-backup]
 **配置探测子进程契约**（父进程获取三路径的唯一方式）：
 - 形态：`subprocess.run([sys.executable, "-c", "<探测片段>"], cwd=backend目录, capture_output=True)`，探测片段 import `app.core.config` 并以固定分隔行打印 `DATABASE_URL` / `CHROMA_DIR` / `UPLOAD_DIR` 三个值（**不打印任何密钥字段**——spec §4.3-3）。
 - 父进程校验：`DATABASE_URL` 必须 `sqlite:///` 前缀且非 `:memory:`，否则 exit 7 明示「仅支持 SQLite 文件库形态」；三个路径统一 `Path(...).expanduser().resolve()` 归一化后再使用。
-- **路径安全守卫（PathGuard）**：探测归一化后立即执行 `validate_protected_paths`——数据库/向量库/上传目录三路径中任一与受保护路径重叠即 exit 7 且零写操作：命中 `.env` 文件本身、`data/public_kb`（含其子路径或为其父路径）、项目根、`backend/`、`data/` 目录本身均拒绝。守卫位于占用检测/确认/备份/删除之前，主链、`--verify-only` 与 worker 子进程入口均复用；防 `.env` 误配（如 `UPLOAD_DIR=data/`）导致删除环节殃及受保护路径（spec §4.3-1）。
+- **路径安全守卫（PathGuard）**：探测归一化后立即执行 `validate_protected_paths`——数据库/向量库/上传目录三路径中任一与受保护路径重叠即 exit 7 且零写操作：命中 `.env` 文件本身、项目根、`backend/`、`data/` 目录本身均拒绝。守卫位于占用检测/确认/备份/删除之前，主链、`--verify-only` 与 worker 子进程入口均复用；防 `.env` 误配（如 `UPLOAD_DIR=data/`）导致删除环节殃及受保护路径（spec §4.3-1）。4 篇演示上传文件由 `clean_runtime_data` 显式跳过，不依赖路径重叠判定。
 - 为何不解析 `.env` 文本：pydantic-settings 的覆盖链（根 `.env` 优先、backend 其次、环境变量最高）在脚本侧复制即漂移；子进程探测保证口径与后端永远同源（1.2.4）。
 
 #### B. worker 子进程契约（重索引调用方式裁决的落点，授权问题 2）
@@ -381,12 +383,13 @@ cd backend && python scripts/reset_demo_data.py [--yes] [--no-backup]
 _worker_reindex():
     # 函数体内才执行 import（模块顶层零 app import 铁律）
     import app 相关模块
-    with SessionLocal() as db0:                  # 短 session：仅查 demo 与公共文档清单
+    with SessionLocal() as db0:                  # 短 session：仅查 demo 与演示文档清单
         demo = db0.scalar(select(User).where(User.username == "demo"))  # init 子进程已保证存在
         items = db0.scalars(select(KnowledgeItem)
-                            .where(KnowledgeItem.scope == KnowledgeScope.PUBLIC)
+                            .where(KnowledgeItem.user_id == demo_id)
+                            .where(KnowledgeItem.file_path.in_(seed_paths))
                             .order_by(KnowledgeItem.id)).all()
-    # 数量硬门禁：恰 4 篇，≠4 打印实际数量与标题清单后立即 exit 1（见下「公共文档定位依据与数量硬门禁」）
+    # 数量硬门禁：恰 4 篇，≠4 打印实际数量与标题清单后立即 exit 1（见下「演示文档定位依据与数量硬门禁」）
     results = []
     for item in items:                           # 跨循环只携带 id/title 标量，不持 ORM 对象跨 await
         try:
@@ -419,7 +422,7 @@ _worker_reindex():
 - **为何不经 HTTP/BackgroundTasks**：spec §5.1.1 规则 8 的首选路径成立——`reindex_item`/`process_document` 是可脱离请求上下文直调的服务层函数（不依赖 Request/BackgroundTasks 对象）；经 TestClient 走 HTTP 反而引入鉴权 token 构造、路由层包装等无关复杂度。裁决：**直调服务层**，无需临时测试客户端。
 - **mode 透传（在线省略 mode）**：`process_document` 的 mode 不落库（1.2.2），worker 在调用前后通过 `embed` 侧日志不可直取——落地方案：worker 在调用 `process_document` 前**先自行探测一次在线 embedding 可用性**（复用存量 `embed_query_with_fallback` 或等价探测，取其二元 mode），仅用于离线兜底篇目的结果行标注；**在线为默认路径，结果行省略 mode 字段不予标注**——spec §6.3 摘要必填项不含 mode，§5.1.3 场景 3 口径为「必要时提示当前为离线兜底索引」，故仅离线兜底篇目附 `(offline 兜底)`，在线篇目一律省略 mode；探测失败不阻断（兜底路径必然可用）。
 - **embedding 不可用的退出语义**：在线不可用 → 降级兜底 → 文档仍 indexed → **不影响退出码**（spec §5.1.3 场景 3）；兜底也失败 → 该篇 failed → worker exit 1 → 父进程映射 exit 6。
-- **公共文档定位依据与数量硬门禁**：按 `scope=PUBLIC` 查而非按标题硬编码——种子是唯一写入公共文档的入口（`init_db._seed_knowledge`），种子只应有 4 篇公共文档。`scope=PUBLIC` 的文档**数量恰为 4** 是硬门禁：查到数量 ≠4 时，打印实际数量与标题清单，worker 立即 exit 1（父进程映射 exit 6），**不得输出「重置完成」摘要**——数量不符说明初始化异常，按失败收口而非警示（不伪造、不硬编码 4、不降级为警告后继续）。
+- **演示文档定位依据与数量硬门禁**：按 demo 用户 + 4 个演示上传文件的确切 `file_path` 查而非按标题硬编码——种子是唯一写入演示文档的入口（`init_db._seed_knowledge`），种子只应有 4 篇演示文档。命中**数量恰为 4** 是硬门禁：查到数量 ≠4 时，打印实际数量与标题清单，worker 立即 exit 1（父进程映射 exit 6），**不得输出「重置完成」摘要**——数量不符说明初始化异常，按失败收口而非警示（不伪造、不硬编码 4、不降级为警告后继续）。
 
 #### C. 占用检测接口（父进程内部函数契约）
 
@@ -450,7 +453,7 @@ guard_occupancy(db_path: Path, backend_port: int = 8000) -> None
 演示账号: demo / 123456（仅供开发演示，请勿用于生产环境）
 备份目录: <绝对路径>/data/_reset_backup/20261024-153012
           （--no-backup 时本行显示：未备份（--no-backup））
-公共知识库（4 篇，真实索引）:
+演示知识库（4 篇，真实索引）:
   [OK] 机器学习核心概念速览 — 8 chunks
   [OK] 线性代数要点笔记：特征值与矩阵分解 — 6 chunks (offline 兜底)
   [OK] 概率论与数理统计公式表 — 5 chunks
@@ -537,12 +540,12 @@ ki -- vs : 真实重索引
    通过标志：/health 返回 code=0
 3. 登录 demo / 123456
    通过标志：进入 Dashboard 且各卡片有数据
-4. 公共知识库 4 篇均已索引且分块数 > 0
-   通过标志：知识库页可见 4 篇公共文档；或接口 GET /api/v1/knowledge/items
-   按 scope=public 过滤为 4 条（真实端点，spec §5.4.1-2.c 勘误口径）
+4. 演示知识库 4 篇均已索引且分块数 > 0
+   通过标志：知识库页可见 4 篇演示文档；或接口 GET /api/v1/knowledge/items
+   按 4 个演示上传文件的 file_path 核对为 4 篇（真实端点，spec §5.4.1-2.c 勘误口径）
 5. 周报有数据
    通过标志：报告页可见上周周报
-6. 自备上传文件：复制 data/public_kb/linear_algebra_notes.md 到桌面备用
+6. 自备上传文件：复制 data/uploads/1/2_linear_algebra_notes.md 到桌面备用
    （重置已清空上传目录，「上传资料」一幕必须自备文件，spec §5.2.1 规则 1）
 
 ## 二、五步分镜（每步固定三小节：操作路径 / 预期界面 / 口播词 30–45 秒；五幕 + 收尾幕合计约 5 分钟）
@@ -574,7 +577,7 @@ ki -- vs : 真实重索引
 ## 三、常见问题与降级话术
 1. 登录失败 → 排查顺序：后端是否启动 → 是否已执行重置 → 数据库路径；
    备用话术 + 现场重跑重置脚本
-2. 知识库检索无结果 → 先确认 4 篇公共文档 indexed；换用预置问题清单
+2. 知识库检索无结果 → 先确认 4 篇演示文档 indexed；换用预置问题清单
    （问题清单随文档给出，与 4 篇文档内容强相关）
 3. LLM 不可用 → 降级话术「现场网络波动，系统已切换到本地检索结果」；
    指明周报/计划等不依赖实时 LLM 的环节可继续
@@ -593,8 +596,8 @@ ki -- vs : 真实重索引
 | 比赛要求 | README 落点 | 动作 |
 |---|---|---|
 | 环境依赖与一键安装 | 现「一、环境要求」扩写：Python/Node 版本表保留，补「后端 pip install -r requirements.txt、前端 npm install、一键 start.bat / start.sh」的串链 | 修订 |
-| 本地运行与复现步骤 | 新增「演示数据一键重置」节（置于「五、一键启动」之后）：重置命令（`--yes` / `--no-backup`）、预期摘要样例、公共知识库索引确认方式（含验证查询命令）、demo 账号、常见启动失败处理（端口占用识别与释放、重置后无法登录的排查）；**明确声明本项目不提供 Docker 容器化与云部署**；现「七、验证方式」中骨架期占位描述修正为真实登录验证 | 新增节 + 修订 |
-| 数据集与开源组件说明 | 新增独立章：`data/public_kb/` 4 篇文档的来源与用途（课程笔记型自编材料，供知识库检索演示）、主要开源组件清单（SQLite / FastAPI / Vue 3 / Element Plus / Chroma / pypdf / OpenAI 兼容 API 等）、声明未使用外部受限数据集 | 新增章 |
+| 本地运行与复现步骤 | 新增「演示数据一键重置」节（置于「五、一键启动」之后）：重置命令（`--yes` / `--no-backup`）、预期摘要样例、演示知识库索引确认方式（含验证查询命令）、demo 账号、常见启动失败处理（端口占用识别与释放、重置后无法登录的排查）；**明确声明本项目不提供 Docker 容器化与云部署**；现「七、验证方式」中骨架期占位描述修正为真实登录验证 | 新增节 + 修订 |
+| 数据集与开源组件说明 | 新增独立章：`data/uploads/1/` 4 篇文档的来源与用途（课程笔记型自编材料，供知识库检索演示）、主要开源组件清单（SQLite / FastAPI / Vue 3 / Element Plus / Chroma / pypdf / OpenAI 兼容 API 等）、声明未使用外部受限数据集 | 新增章 |
 | 码道（CodeArts）使用说明 | 新增独立章：码道参与的开发环节（需求/设计/编码/测试辅助）与作用描述 | 新增章 |
 
 **禁止项落地**：全文检索自查——不出现 Dockerfile / docker-compose / 云部署操作指引（spec §5.3.1 规则 2a）；不泄露 `.env` 真实密钥；「重置命令、摘要样式、账号、访问地址」逐字对齐脚本实际输出（一致性规则 §5.3.1-3，编写时以脚本真实跑出的摘要为准贴样例）。
@@ -609,7 +612,7 @@ spec §5.4.1 本轮验收口径 → 设计落点逐条映射：
 | §5.4.1-1 重置验证（连跑两次，第二次不报错；输出含备份路径 / demo 账号提示 / 4 篇分块验证行） | 进程模型（2.1.3-A）保证每次执行都是全新进程链；备份撞名序号后缀（2.1.3-C）保证第二次备份不覆盖；摘要版式（2.2.2-D）固定含三要素 | 实跑 `reset_demo_data.py --yes` 两次，比对两次摘要与退出码 |
 | §5.4.1-2.a 后端测试全绿（基线 206 passed） | 本设计零改动 `backend/app/**` 与 `backend/tests/**`；新脚本命名规避 pytest 收集（1.2.5） | `cd backend && pytest` |
 | §5.4.1-2.b 前端构建通过 | 零改动 `frontend/**` | `cd frontend && npm run build` |
-| §5.4.1-2.c 公共文档 4 条（`GET /api/v1/knowledge/items` 按 scope=public） | worker 重索引 4 篇至 indexed（2.2.2-B）；DEMO_SCRIPT 前置检查第 4 项含该核对（2.4.1） | 重置 + 启动后端后调真实端点 |
+| §5.4.1-2.c 演示文档 4 条（`GET /api/v1/knowledge/items` 按 file_path 前缀 data/uploads/1/） | worker 重索引 4 篇至 indexed（2.2.2-B）；DEMO_SCRIPT 前置检查第 4 项含该核对（2.4.1） | 重置 + 启动后端后调真实端点 |
 | §5.4.1-2.d demo / 123456 登录返回 token | init 子进程种子含 demo 账号（1.2.1）；DEMO_SCRIPT 前置检查第 3 项 | 登录接口实测 |
 | §5.4.1-3 文档交付（DEMO_SCRIPT.md 已生成、README 已更新） | 2.4.1 / 2.4.2 结构骨架与写作约束 | 文档走读 |
 | §5.4.1-4 改动范围验证（git 基线对比） | 文件清单（第五章）即允许新增集；脚本自身不创建任何 git 操作 | 开工/收工各跑一次 `git status --short -uall` 对比 |
@@ -632,7 +635,7 @@ spec §5.1.1 各规则的映射要点：规则 1（路径解析）→ 2.2.2-A �
 | R9 | DEMO_SCRIPT 口播词/界面描述与前端实况漂移 | 演示现场卡壳 | 写作约束「只写既有页面元素」+ 编写时逐页走查（1.2.6）；该走查是 tasks 阶段动作 | 中 |
 
 **未决点**：
-1. 4 篇公共文档的真实分块数当前**未验证**（需实现后实跑才知），摘要样例中的数字为占位示意；README/DEMO_SCRIPT 贴样例时必须以真实输出为准。
+1. 4 篇演示文档的真实分块数当前**未验证**（需实现后实跑才知），摘要样例中的数字为占位示意；README/DEMO_SCRIPT 贴样例时必须以真实输出为准。
 2. worker 探测在线 embedding 可用性的具体调用点（复用 `embed_query_with_fallback` 或等价最小探测）在实现时以代码事实为准——两方案均为存量能力复用，不改变本设计的进程模型与契约。
 3. 前端「上传后状态轮询」的既有交互细节（轮询间隔/可见徽章）未在本设计中展开核对，留待 DEMO_SCRIPT 编写时对照页面走查（R9）。
 

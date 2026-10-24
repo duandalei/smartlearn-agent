@@ -21,10 +21,9 @@
   检索不再命中的强感知），向量与原件清理放 background_tasks
   best-effort 执行（失败仅 warning 不回滚，design.md 2.1.3-C）；
 - 重索引（2.2.2-3）：``pending/parsing`` 拒绝（1007，封死「受理后
-  任务尚未启动」的竞态窗口）；**公共文档允许重索引**（spec
-  5.4.1 规则 3 裁决口径：重索引是幂等重跑而非内容修改）；
+  任务尚未启动」的竞态窗口）；
 - 检索编排（2.2.2-5）：查询向量化（在线→兜底）→ 同空间「本人
-  个人库 + 公共库」两 collection 检索合并；mode 只随响应透出
+  个人库」collection 检索；mode 只随响应透出
   **不落库**（可用性是瞬时状态，落库会过期误导，design.md 2.4.3）；
   本函数是 P9 Agent 工具 ``search_knowledge_base`` 的业务底座，
   签名保持稳定。
@@ -46,13 +45,12 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import PROJECT_ROOT, settings
 from app.core.response import (
     CODE_BIZ_CONFLICT,
-    CODE_FORBIDDEN,
     CODE_LLM_FAILED,
     CODE_NOT_FOUND,
     CODE_PARAM_INVALID,
@@ -92,7 +90,7 @@ def _enum_value(value: Any) -> str:
 
     ``class X(str, Enum)`` 的 ``str()`` 返回 ``'X.MEMBER'`` 而非
     成员值（Python 3.13 实测），collection 命名与 where 过滤必须
-    用本辅助取 ``'personal'`` / ``'public'`` 这类落库口径值。
+    用本辅助取 ``'personal'`` 这类落库口径值。
 
     Args:
         value: 枚举成员或裸字符串。
@@ -109,7 +107,7 @@ def _enum_value(value: Any) -> str:
 
 
 def visibility_filters(user_id: int) -> list[Any]:
-    """构造知识库可见性过滤条件：本人个人库 ∪ 全部公共库。
+    """构造知识库可见性过滤条件：仅本人文档（公共库已移除）。
 
     api 层存量端点（列表/详情）与本模块写操作端点（删除/重索引/
     分块查看）共用同一口径——「不可见即不存在」防 ID 枚举的单一
@@ -122,12 +120,7 @@ def visibility_filters(user_id: int) -> list[Any]:
     Returns:
         list[Any]: SQLAlchemy 过滤条件列表。
     """
-    return [
-        or_(
-            KnowledgeItem.user_id == user_id,
-            KnowledgeItem.scope == KnowledgeScope.PUBLIC,
-        )
-    ]
+    return [KnowledgeItem.user_id == user_id]
 
 
 def _get_visible_item(db: Session, user: User, item_id: int) -> KnowledgeItem:
@@ -219,7 +212,7 @@ async def create_item_from_upload(
     db.flush()
 
     # ③ 落盘：路径从 ``settings.UPLOAD_DIR`` 派生（可被测试环境
-    # 覆盖隔离）；``file_path`` 存相对项目根 POSIX 路径（与公共文档
+    # 覆盖隔离）；``file_path`` 存相对项目根 POSIX 路径（与演示文档
     # 种子同口径，运行时以 PROJECT_ROOT 拼接解析）；UPLOAD_DIR 被
     # 指到项目外（测试隔离）时退化为绝对路径——pathlib 的
     # ``PROJECT_ROOT / 绝对路径`` 语义天然兼容，解析口径不二分。
@@ -378,8 +371,8 @@ async def process_document(item_id: int) -> None:
         return
 
     # ⑧ SQLite 单事务：删旧 chunks → 写新 chunks（回填 embedding_id
-    # 与 heading_path、user_id 冗余口径 personal→本人 / public→NULL）
-    # → item 置 indexed + chunk_count=N + error_msg=None。
+    # 与 heading_path、user_id 冗余归属）→ item 置 indexed +
+    # chunk_count=N + error_msg=None。
     try:
         with SessionLocal() as db:
             item = db.get(KnowledgeItem, item_id)
@@ -437,13 +430,13 @@ def cleanup_after_delete(
 
     删除路径的资源收敛（design.md 2.1.3-C）：SQLite 已在请求事务
     内同步删除（列表立即不可见、检索不再命中的强感知）；本函数
-    负责向量库双 collection 清理与原件删除——失败仅 warning 日志
+    负责向量库双空间清理与原件删除——失败仅 warning 日志
     不回滚（原件已不可达，属可接受的最终一致）。
 
     Args:
         item_id: 文档 id。
-        scope: 归属作用域（"personal" / "public"）。
-        user_id: 归属用户 id（public 为 None）。
+        scope: 归属作用域（当前恒为 personal）。
+        user_id: 归属用户 id。
         file_path: 原件相对项目根路径（可能为 None）。
     """
     try:
@@ -469,7 +462,7 @@ def cleanup_after_delete(
 
 
 def delete_item(db: Session, user: User, item_id: int) -> dict[str, Any]:
-    """删除个人库文档（可见性校验 → 公共库保护 → 级联删除）。
+    """删除个人库文档（可见性校验 → 级联删除）。
 
     请求事务内同步删除 SQLite 行（chunks 由 session 级
     ``delete-orphan`` + SQLite FK CASCADE 双保险级联清理）；向量与
@@ -486,12 +479,9 @@ def delete_item(db: Session, user: User, item_id: int) -> dict[str, Any]:
         "file_path"}``，供路由层交给 background_tasks。
 
     Raises:
-        BizException: code=1005 / HTTP 404（不可见或不存在）；
-            code=1004 / HTTP 403（公共文档不可删除）。
+        BizException: code=1005 / HTTP 404（不可见或不存在）。
     """
     item = _get_visible_item(db, user, item_id)
-    if item.scope == KnowledgeScope.PUBLIC:
-        raise BizException(CODE_FORBIDDEN, "公共文档不可删除", http_status=403)
     cleanup = {
         "item_id": item_id,
         "scope": _enum_value(item.scope),
@@ -505,13 +495,11 @@ def delete_item(db: Session, user: User, item_id: int) -> dict[str, Any]:
 
 
 def reindex_item(db: Session, user: User, item_id: int) -> KnowledgeItem:
-    """触发重新索引（幂等重跑；公共文档允许）。
+    """触发重新索引（幂等重跑）。
 
     并发防护：``status ∈ {pending, parsing}`` 拒绝（1007）——封死
     「受理后任务尚未启动」的竞态窗口（spec 5.4.3 场景 3 口径：
-    pending 一并拒绝）。**公共文档允许重索引**（spec 5.4.1 规则 3
-    裁决：重索引是幂等重跑而非内容修改，公共库种子刷新依赖该
-    能力，design.md 2.5）。
+    pending 一并拒绝）。重索引是幂等重跑而非内容修改。
 
     旧向量不在此预删——由流水线 upsert 前的统一清理 + 确定性 id
     覆盖收敛（design.md 2.2.2-3 幂等性论证）。
@@ -563,7 +551,7 @@ def list_chunks_by_item(
     """按文档查看全部分块（chunk_index 升序，全量不分页）。
 
     单文档分块数受「20MB 原件 + 500 字符/块」约束，量级数百以内
-    （公共文档实测 8~12 块），JSON 体积可控（design.md 2.2.2-4
+    （演示文档实测 8~12 块），JSON 体积可控（design.md 2.2.2-4
     取舍）。可见性判定单一来源在 item 层（先判文档可见再取分块）。
 
     Args:
@@ -594,23 +582,14 @@ async def search_knowledge(
     user_id: int,
     query: str,
     top_k: int,
-    scope: Literal["personal", "public", "all"] = "all",
 ) -> dict[str, Any]:
-    """知识库语义检索（P9 Agent 工具 ``search_knowledge_base`` 底座）。
+    """知识库语义检索（个人库；公共库能力已移除）。
 
     编排（design.md 2.2.2-5）：查询向量化（在线失败重试后降级
     兜底，mode 判定）→ ``query_visible`` 在**与查询向量同空间**的
-    可见 collection 检索（P9 scope 三档：personal 仅本人个人库 /
-    public 仅公共库 / all 两路合并，过滤发生在 collection 选择层，
-    design.md 2.5）→ hit 经 ``KnowledgeSearchHit.model_validate``
+    个人 collection 检索 → hit 经 ``KnowledgeSearchHit.model_validate``
     强类型化（禁止裸 dict 出 services 边界）→ 按 score 降序、
     条数 ≤ top_k。
-
-    ``scope`` 为**前向兼容扩展**（裁决 #2）：追加带默认值的位置
-    参数，既有四参调用（按位置或关键字）行为不变；``all`` 路径
-    与扩展前逐行一致。``KnowledgeSearchHit`` 组装时从底层 hit
-    填充 ``item_id / chunk_index / scope`` 三字段（P7 组装时被
-    丢弃，P9 裁决 #3 恢复透出，供来源跳转与归属徽章使用）。
 
     mode 不落库的原因（design.md 2.4.3）：可用性是瞬时状态，落库
     会过期误导；mode 只随本次响应透出，是前端渲染离线警示条的
@@ -618,11 +597,10 @@ async def search_knowledge(
 
     Args:
         db: 请求级数据库会话（当前实现检索路径不触达关系库，参数
-            保留以满足 P9 Agent 工具的统一调用形态）。
+            保留以满足 Agent 工具的统一调用形态）。
         user_id: 当前用户 id（个人库 collection 选择依据）。
         query: 检索问题文本（非空，≤500 字符，入参已校验）。
         top_k: 期望命中条数（1~20，入参已校验）。
-        scope: 检索范围三档（personal / public / all），默认 all。
 
     Returns:
         dict[str, Any]: ``KnowledgeSearchOut`` 序列化结构
@@ -651,7 +629,7 @@ async def search_knowledge(
         ) from None
 
     try:
-        hits = query_visible(user_id, query_vector, top_k, mode, scope)
+        hits = query_visible(user_id, query_vector, top_k, mode)
     except BizException:
         raise
     except Exception as exc:  # noqa: BLE001

@@ -265,7 +265,7 @@ def _extract_sources(result: dict[str, Any]) -> list[dict[str, Any]] | None:
     - ``results == []`` → ``[]``（检索成功空命中，键在值为空数组）；
     - 正常命中 → 六字段白名单（content/source_title/score/item_id/
       chunk_index/scope）逐条提取：``content``/``source_title`` 非 str、
-      ``scope`` 不在 {personal, public} 的脏条目整条丢弃；``content``
+      ``scope`` 非 personal 的脏条目整条丢弃；``content``
       超 ``SOURCE_CONTENT_MAX_LEN`` 截断；``score`` 非数值置 0.0、
       ``item_id``/``chunk_index`` 非 int 置 None（可空字段降级，与前端
       normalizeSources 口径一致保证实时/历史一致）；总量超
@@ -288,7 +288,7 @@ def _extract_sources(result: dict[str, Any]) -> list[dict[str, Any]] | None:
         scope = item.get("scope")
         if not isinstance(content, str) or not isinstance(title, str):
             continue
-        if scope not in ("personal", "public"):
+        if scope != "personal":
             continue
         score = item.get("score")
         item_id = item.get("item_id")

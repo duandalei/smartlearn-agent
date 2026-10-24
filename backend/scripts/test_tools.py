@@ -249,37 +249,16 @@ def seed_mastery(user_ids: dict[str, int]) -> None:
 
 
 def seed_knowledge(user_ids: dict[str, int]) -> dict[str, Any]:
-    """知识库：公共 4 篇 + user_a / user_b 各 1 篇个人文档（离线流水线）。
+    """知识库：user_a / user_b 各 1 篇个人文档（离线流水线，仅个人库）。
 
-    公共档按 ``data/public_kb/*.md`` 建档（模拟 db/init_db.py 种子），
     个人档写入临时 md 后直插（scope=personal），统一经
     ``process_document`` 走真实离线索引（本地兜底向量化真实入 Chroma）。
     """
-    from app.core.config import PROJECT_ROOT
     from app.services.knowledge import process_document
 
     titles: dict[str, str] = {}
     personal_files: list[tuple[int, str, str]] = []
     with SessionLocal() as session:
-        kb_dir = PROJECT_ROOT / "data" / "public_kb"
-        files = sorted(kb_dir.glob("*.md"))
-        assert files, f"公共文档种子目录为空: {kb_dir}"
-        item_ids: list[int] = []
-        for md_file in files:
-            item = KnowledgeItem(
-                user_id=None,
-                title=md_file.stem,
-                source_type=KnowledgeSourceType.MD,
-                file_path=f"data/public_kb/{md_file.name}",
-                scope=KnowledgeScope.PUBLIC,
-                status=KnowledgeItemStatus.PENDING,
-                chunk_count=0,
-                file_size=md_file.stat().st_size,
-            )
-            session.add(item)
-            session.flush()
-            item_ids.append(item.id)
-            titles[item.id] = md_file.stem
         upload_dir = Path(os.environ["UPLOAD_DIR"])
         for uid, stem, body in [
             (user_ids["a"], "用户A私有笔记",
@@ -309,8 +288,6 @@ def seed_knowledge(user_ids: dict[str, int]) -> dict[str, Any]:
             personal_files.append((item.id, stem, body))
             titles[item.id] = stem
         session.commit()
-    for item_id in item_ids:
-        asyncio.run(process_document(item_id))
     for item_id, _stem, _body in personal_files:
         asyncio.run(process_document(item_id))
     return {"titles": titles, "personal": {stem: item_id for item_id, stem, _ in personal_files}}
@@ -357,7 +334,7 @@ def g0_registry() -> None:
         "get_tasks": ["status", "due_before"],
         "get_knowledge_mastery": ["topic"],
         "get_learning_statistics": ["days"],
-        "search_knowledge_base": ["query", "top_k", "scope"],
+        "search_knowledge_base": ["query", "top_k"],
         "create_task": ["title", "description", "goal_id", "course_id",
                         "knowledge_points", "priority", "estimated_minutes", "deadline"],
         "update_task": ["task_id", "title", "description", "goal_id", "course_id",
@@ -646,12 +623,8 @@ def g6_search(user_ids: dict[str, int], kb: dict[str, Any]) -> None:
         db = session
         result = call("search_knowledge_base", user_ids["a"],
                       {"query": "注意力机制", "top_k": 5})
-        personal = call("search_knowledge_base", user_ids["a"],
-                        {"query": "注意力机制", "scope": "personal"})
-        public_only = call("search_knowledge_base", user_ids["a"],
-                           {"query": "注意力机制", "scope": "public"})
-        b_personal = call("search_knowledge_base", user_ids["b"],
-                          {"query": "注意力机制", "scope": "personal"})
+        b_result = call("search_knowledge_base", user_ids["b"],
+                        {"query": "注意力机制", "top_k": 5})
         miss = call("search_knowledge_base", user_ids["a"],
                     {"query": "量子纠缠背后的咖啡烘焙工艺", "top_k": 3})
     six = {"content", "source_title", "score", "item_id", "chunk_index", "scope"}
@@ -663,17 +636,15 @@ def g6_search(user_ids: dict[str, int], kb: dict[str, Any]) -> None:
           str(result)[:200])
     check("G6.2 沙箱降级验收路径（mode == 'offline'）",
           result.get("mode") == "offline", result.get("mode", ""))
-    a_titles = {kb["titles"].get(r["item_id"], "") for r in personal.get("results", [])}
-    check("G6.3 scope=personal 仅本人个人库（不含公共与他人文档）",
-          personal.get("results") and a_titles == {"用户A私有笔记"},
-          str(a_titles))
-    p_scopes = {r["scope"] for r in public_only.get("results", [])}
-    check("G6.4 scope=public 仅公共文档", public_only.get("results") and p_scopes == {"public"},
-          str(p_scopes))
-    check("G6.5 用户B的personal档不含用户A文档（双层库隔离）",
+    a_titles = {kb["titles"].get(r["item_id"], "") for r in results}
+    check("G6.3 检索仅本人个人库（不含他人文档与公共文档）",
+          results and a_titles == {"用户A私有笔记"}, str(a_titles))
+    check("G6.4 结果归属恒为 personal",
+          all(r["scope"] == "personal" for r in results), str(results)[:200])
+    check("G6.5 用户B检索不含用户A文档（个人库隔离）",
           all(r["item_id"] != kb["personal"]["用户A私有笔记"]
-              for r in b_personal.get("results", [])),
-          str(b_personal)[:200])
+              for r in b_result.get("results", [])),
+          str(b_result)[:200])
     relevant_max = max((r["score"] for r in results), default=0.0)
     miss_max = max((r["score"] for r in miss.get("results", [])), default=0.0)
     check("G6.6 无相关词 → score 显著低于相关词（或空 results）",
@@ -685,16 +656,15 @@ def g6_search(user_ids: dict[str, int], kb: dict[str, Any]) -> None:
         e_empty = call("search_knowledge_base", user_ids["a"], {"query": ""})
         e_long = call("search_knowledge_base", user_ids["a"], {"query": "长" * 501})
         e_topk = call("search_knowledge_base", user_ids["a"], {"query": "x", "top_k": 0})
-        e_scope = call("search_knowledge_base", user_ids["a"], {"query": "x", "scope": "xxx"})
+        e_extra = call("search_knowledge_base", user_ids["a"], {"query": "x", "scope": "personal"})
     check("G6.7 query 空串 → error 含长度上限",
           "error" in e_empty and "1–500" in e_empty["error"], str(e_empty))
     check("G6.8 query 501 字符 → error 含长度上限",
           "error" in e_long and "1–500" in e_long["error"], str(e_long)[:120])
     check("G6.9 top_k=0 → error 含 1–20",
           "error" in e_topk and "1–20" in e_topk["error"], str(e_topk))
-    check("G6.10 scope='xxx' → error 含合法枚举",
-          "error" in e_scope and "personal" in e_scope["error"] and "all" in e_scope["error"],
-          str(e_scope))
+    check("G6.10 已移除的 scope 参数 → error 提示未知参数",
+          "error" in e_extra and "scope" in e_extra["error"], str(e_extra))
 
 
 def _task_count(user_id: int) -> int:

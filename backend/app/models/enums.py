@@ -70,10 +70,9 @@ class PlanSource(str, enum.Enum):
 
 
 class KnowledgeScope(str, enum.Enum):
-    """知识库可见范围：个人库 / 公共库。"""
+    """知识库归属范围：仅个人库（公共库能力已移除）。"""
 
     PERSONAL = "personal"
-    PUBLIC = "public"
 
 
 class KnowledgeItemStatus(str, enum.Enum):

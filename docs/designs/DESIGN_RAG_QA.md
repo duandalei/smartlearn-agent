@@ -1,5 +1,7 @@
 # RAG AI 学习问答实现方案（DESIGN_RAG_QA）
 
+> **变更说明（2026-10-25，公共库能力已移除）**：`ChatQAIn.scope` 三档与公共 collection 检索已删除；`search_knowledge` 恒查当前用户个人 collection，来源 `scope` 恒为 personal。下文涉及 public/all 档位与公共库的历史设计仅作演进记录。
+
 > feature: `rag_qa` ｜ 阶段：实现方案设计（spec-design-agent 产出）
 > 上游输入：`docs/specs/SPEC_RAG_QA.md`（**R3 定稿**，12 项裁决 + R3 三项增量裁定 + D1–D9 验收标准 + SSE 四事件契约 + §6.16 qa_history 表 + RAG_MIN_SCORE=0.55 与 Prompt 第二道防线）、`docs/PROJECT_CONTEXT.md`（全项目唯一技术契约，16 张表口径）
 > 生成日期：2026-10-21 ｜ 修订日期：2026-10-21（R3 增量修订）｜ 状态：三项开放决策点已由用户裁定并落实（见修订记录），可进入 tasks.md 阶段

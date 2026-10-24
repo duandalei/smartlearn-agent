@@ -1,5 +1,7 @@
 # TASKS_DEMO_RESET —— 演示数据重置 + 演示脚本 + README 补齐 编码任务清单
 
+> **变更说明（2026-10-25，公共库能力已移除）**：4 篇演示文档作为 demo 用户的普通上传文件放在 `data/uploads/1/`；重置 worker 按 4 个确切 `file_path` 查询并重索引，清理环节显式保留这 4 个文件。下文涉及 `data/public_kb/`、`scope=PUBLIC` 的历史条目仅作演进记录，以现行代码与 README/DEMO_SCRIPT 为准。
+
 > feature：`demo_reset`（P13 收尾批次）
 > 上游输入：`.codeartsdoer/specs/demo_reset/spec.md`（339 行，5 处定点修订后定稿）；`docs/designs/DESIGN_DEMO_RESET.md`（648 行，4 处定点修订后定稿）
 > UI 依据：`docs/WALKTHROUGH_PLAN_REPORT_FRONTEND.md`（W1–W12 已通过）；`docs/需求文档.md` 第 32 节（五步演示剧本）
@@ -16,7 +18,7 @@
 4. **不做 Docker / 云部署**：不创建 `Dockerfile`、`docker-compose.yml`、`docs/DEPLOY_HUAWEI.md`；README 与 DEMO_SCRIPT 中禁止出现 Docker / 云部署章节（spec §1.4-1）。
 5. **不 commit**：本轮产出物不执行任何 git commit（spec §1.4-5）。
 6. **不杀进程**：占用检测只提示退出，禁止 `kill` / `taskkill`（spec §1.4-4）。
-7. **不动受保护路径**：`data/public_kb/` 与 `.env` 任何执行路径下（含异常、中断）不删不改（spec §4.3-1）。
+7. **不动受保护路径**：`.env` 任何执行路径下（含异常、中断）不删不改；`data/uploads/1/` 下 4 篇演示上传文件由清理环节显式保留（spec §4.3-1 的沿用口径）。
 8. **不进入下游阶段**：不打包提交包、不生成 P14 报告；本清单完成后停止，编码由实现阶段执行。
 
 ## 最终门禁（写死，组 6 逐条验收）
@@ -24,7 +26,7 @@
 | # | 门禁 | 判据 |
 |---|---|---|
 | G1 | 幂等两跑 | `reset_demo_data.py --yes` 连跑两次，退出码均 0，第二次不报错 |
-| G2 | 索引终态 | 4 篇公共文档 `status=indexed` 且每篇 `chunk_count > 0` 且 `chunk_count == knowledge_chunks 实际行数` |
+| G2 | 索引终态 | 4 篇演示文档 `status=indexed` 且每篇 `chunk_count > 0` 且 `chunk_count == knowledge_chunks 实际行数` |
 | G3 | 后端测试 | `cd backend && pytest -q` → 206 passed（若有变化必须说明原因） |
 | G4 | 前端构建 | `cd frontend && npm run build` → exit 0 |
 | G5 | 改动范围 | `git status --short -uall` 与开工基线对比：只多出 `backend/scripts/reset_demo_data.py`、`docs/DEMO_SCRIPT.md`、`docs/designs/DESIGN_DEMO_RESET.md`（基线中已有则不算新增）、`docs/tasks/TASKS_DEMO_RESET.md`、`README.md` 改动条目；`backend/app/`、`frontend/src/` 无任何改动条目 |
@@ -87,16 +89,16 @@
 
 ## 2. 实现删除 + 初始化子进程 + worker 重索引（逐篇隔离 / 全新 session 回查 / 数量=4 硬门禁）
 
-> 目标：完成主链后半——删除运行期数据、`python -m app.db.init_db` 子进程重建、`--worker-reindex` 子进程真实重索引 4 篇公共文档。
+> 目标：完成主链后半——删除运行期数据、`python -m app.db.init_db` 子进程重建、`--worker-reindex` 子进程真实重索引 4 篇演示文档。
 > 依据：design §2.1.3-A、§2.1.3-C、§2.2.2-B；spec §5.1.1 规则 5/6、§4.2-4。本组依赖组 1 全部完成（CLI/探测/占用检测/确认/备份就绪后才可串接）。
 
 ### 2.1 实现运行期数据删除（含删除前二次占用探测）
 
-- [x] 在 `reset_demo_data.py` 中实现删除环节：删除动作前再执行一次防线 2+3 二次探测（跳过防线 1），命中仍 exit 2；随后按序删除——数据库主文件及 `-wal`/`-shm` → chroma 目录整体 → uploads 目录内容（保留 uploads 目录本身）；任一文件删除失败即中止（剩余不删），exit 4，输出失败文件与「按备份回滚数据库」指引；`data/public_kb/` 与 `.env` 不出现在删除集合的任何代码路径中。
+- [x] 在 `reset_demo_data.py` 中实现删除环节：删除动作前再执行一次防线 2+3 二次探测（跳过防线 1），命中仍 exit 2；随后按序删除——数据库主文件及 `-wal`/`-shm` → chroma 目录整体 → uploads 目录内容（保留 uploads 目录本身与 4 篇演示上传文件）；任一文件删除失败即中止（剩余不删），exit 4，输出失败文件与「按备份回滚数据库」指引；`.env` 不出现在删除集合的任何代码路径中。
 - 涉及文件：`backend/scripts/reset_demo_data.py`
 - 实现要点：二次探测收口 TOCTOU 窗口（design §2.1.3-B）；chroma/uploads 无回滚义务（spec §4.2-3），删除失败提示中如实说明。
 - 对应章节：spec §5.1.1 规则 1、§4.2-3、§4.3-1；design §2.1.3-C Clean 步、风险 R1/R5。
-- 完成判据：构造 uploads 内某文件被占用（如编辑器打开）后执行 → exit 4，提示含失败文件路径与回滚指引，且备份目录仍完整存在；正常路径下删除后 `data/smartlearn.db`、`data/chroma/` 不存在、`data/uploads/` 为空目录，而 `data/public_kb/` 4 篇与 `.env` 原样未动（前后 `dir` / `ls` 与哈希比对）。
+- 完成判据：构造 uploads 内某文件被占用（如编辑器打开）后执行 → exit 4，提示含失败文件路径与回滚指引，且备份目录仍完整存在；正常路径下删除后 `data/smartlearn.db`、`data/chroma/` 不存在、`data/uploads/` 仅保留 4 篇演示文件，而 `data/uploads/1/` 4 篇与 `.env` 原样未动（前后 `dir` / `ls` 与哈希比对）。
 
 ### 2.2 串接初始化子进程（python -m app.db.init_db）
 
@@ -108,15 +110,15 @@
 
 ### 2.3 实现 worker 重索引子命令（--worker-reindex）
 
-- [x] 在 `reset_demo_data.py` 同一文件内实现 `_worker_reindex()`（async，由 `asyncio.run` 驱动）：函数体内才 import app 服务层；短 session 查 demo 用户与 `scope=PUBLIC` 公共文档清单（按 id 排序）；**数量硬门禁——恰为 4 篇**，≠4 时打印实际数量与标题清单立即 exit 1；随后 4 篇**串行**，每篇三步：① 短生命周期 `SessionLocal` 内 `reindex_item(db1, demo, item.id)` 并随 with 关闭；② `await process_document(item.id)`；③ **全新** `SessionLocal` 回查终态，三条件缺一不可——`status == indexed` 且 `chunk_count > 0` 且 `chunk_count == SELECT COUNT(*) FROM knowledge_chunks WHERE item_id=?`；每篇独立 try/except（`BizException` 与未预期异常分别捕获），打印 `[OK] <标题> — N chunks` 或 `[FAIL] <标题> — <原因>` 后继续下一篇；跨循环只携带 id/title 标量，不持 ORM 对象跨 await；全部完成后任一篇失败则 exit 1。
+- [x] 在 `reset_demo_data.py` 同一文件内实现 `_worker_reindex()`（async，由 `asyncio.run` 驱动）：函数体内才 import app 服务层；短 session 查 demo 用户与 4 个演示上传文件的 `file_path` 精确匹配清单（按 id 排序）；**数量硬门禁——恰为 4 篇**，≠4 时打印实际数量与标题清单立即 exit 1；随后 4 篇**串行**，每篇三步：① 短生命周期 `SessionLocal` 内 `reindex_item(db1, demo, item.id)` 并随 with 关闭；② `await process_document(item.id)`；③ **全新** `SessionLocal` 回查终态，三条件缺一不可——`status == indexed` 且 `chunk_count > 0` 且 `chunk_count == SELECT COUNT(*) FROM knowledge_chunks WHERE item_id=?`；每篇独立 try/except（`BizException` 与未预期异常分别捕获），打印 `[OK] <标题> — N chunks` 或 `[FAIL] <标题> — <原因>` 后继续下一篇；跨循环只携带 id/title 标量，不持 ORM 对象跨 await；全部完成后任一篇失败则 exit 1。
 - 涉及文件：`backend/scripts/reset_demo_data.py`（worker 分支）；只读复用 `backend/app/services/knowledge.py`（`reindex_item` 507 行 / `process_document` 267 行）、`backend/app/db/session.py`、`backend/app/models`
 - 实现要点：禁止绕过 `reindex_item` 直接调 `process_document`（种子态 indexed 会被入口状态机拒）；禁止 `asyncio.gather` 并行（SQLite 写锁竞争）；回查必须全新 session（旧 session 读快照可能看不到新提交）；worker 在调用前探测一次在线 embedding 可用性，仅离线兜底篇目的结果行附 `(offline 兜底)` 标注，在线篇目省略 mode（design §2.2.2-B mode 透传条款）。
 - 对应章节：spec §5.1.1 规则 6/8、§5.1.3 场景 2/3、§4.1-1；design §2.2.2-B 全文（逐篇隔离 / session 三禁区 / 数量硬门禁）、裁决速查表 #2。
-- 完成判据：完整执行重置后 worker 输出 4 行 `[OK]` 且数字为真实切分结果；人为制造单篇失败——先完成一次正常重置，将 `data/smartlearn.db` 复制为 `backend/tmp_verify/reindex_fail.db` 临时库副本，用标准库 `sqlite3` 把该副本中某篇 public 文档的 `file_path` 改为一个不存在的绝对临时路径，再以 `DATABASE_URL=sqlite:///<临时库>` 进程环境变量执行 `--worker-reindex` → 该篇 `[FAIL]` + 原因，其余篇目继续，worker exit 1；**全程禁止改名/删除 `data/public_kb/` 源文档**。
+- 完成判据：完整执行重置后 worker 输出 4 行 `[OK]` 且数字为真实切分结果；人为制造单篇失败——先完成一次正常重置，将 `data/smartlearn.db` 复制为 `backend/tmp_verify/reindex_fail.db` 临时库副本，用标准库 `sqlite3` 把该副本中某篇 public 文档的 `file_path` 改为一个不存在的绝对临时路径，再以 `DATABASE_URL=sqlite:///<临时库>` 进程环境变量执行 `--worker-reindex` → 该篇 `[FAIL]` + 原因，其余篇目继续，worker exit 1；**全程禁止改名/删除 `data/uploads/1/` 源文档**。
 
 ### 2.4 串接重索引子进程并映射退出码
 
-- [x] 在 `reset_demo_data.py` 父进程主链中实现 `ReindexRunner`：初始化子进程成功后以 `subprocess.run([sys.executable, "scripts/reset_demo_data.py", "--worker-reindex"], cwd=backend目录)` 执行；worker 结果行原样透传（父进程不重新格式化 worker 的事实数据）；worker exit 非 0 或公共文档数量 ≠4 → 父进程 exit 6，逐篇标示成功/失败及 `error_msg`，**不输出「重置完成」摘要**。
+- [x] 在 `reset_demo_data.py` 父进程主链中实现 `ReindexRunner`：初始化子进程成功后以 `subprocess.run([sys.executable, "scripts/reset_demo_data.py", "--worker-reindex"], cwd=backend目录)` 执行；worker 结果行原样透传（父进程不重新格式化 worker 的事实数据）；worker exit 非 0 或演示文档数量 ≠4 → 父进程 exit 6，逐篇标示成功/失败及 `error_msg`，**不输出「重置完成」摘要**。
 - 涉及文件：`backend/scripts/reset_demo_data.py`
 - 实现要点：worker 自身退出码收敛 0/1，父进程映射为 6（design §2.2.2-E）；失败篇目禁止显示虚假分块数（spec §5.1.1 规则 6）。
 - 对应章节：spec §5.1.1 规则 6、§6.1-3；design §2.1.3-C ReindexChild 节点、§2.2.2-D 透传条款。
@@ -137,7 +139,7 @@
 
 ### 3.2 实现结构化摘要打印
 
-- [x] 在 `reset_demo_data.py` 中实现摘要块，版式对齐 design §2.2.2-D：标题行「SmartLearn 演示数据重置完成」、数据库路径（标注「已重建」）、演示账号 `demo / 123456`（附「仅供开发演示，请勿用于生产环境」）、备份目录路径（`--no-backup` 时显式打印「未备份（--no-backup）」）、公共知识库 4 篇逐行 `[OK] 标题 — N chunks`（仅离线兜底篇目附 `(offline 兜底)`；失败篇目 `[FAIL] 标题 — 原因`，禁止虚假数字）、可选验证查询命令、下一步提示；全文中文、不打印任何密钥。
+- [x] 在 `reset_demo_data.py` 中实现摘要块，版式对齐 design §2.2.2-D：标题行「SmartLearn 演示数据重置完成」、数据库路径（标注「已重建」）、演示账号 `demo / 123456`（附「仅供开发演示，请勿用于生产环境」）、备份目录路径（`--no-backup` 时显式打印「未备份（--no-backup）」）、演示知识库 4 篇逐行 `[OK] 标题 — N chunks`（仅离线兜底篇目附 `(offline 兜底)`；失败篇目 `[FAIL] 标题 — 原因`，禁止虚假数字）、可选验证查询命令、下一步提示；全文中文、不打印任何密钥。
 - 涉及文件：`backend/scripts/reset_demo_data.py`
 - 实现要点：worker 的逐篇结果行原样透传进摘要块；分块数一律来自任务 3.1 的真实查询，禁止硬编码（spec §5.1.1 规则 6）。
 - 对应章节：spec §6.3 全部四项、§4.4-1、§4.3-3；design §2.2.2-D 摘要块版式。
@@ -149,7 +151,7 @@
 - 涉及文件：`backend/scripts/reset_demo_data.py`
 - 实现要点：3/4/5 档可用临时构造（如备份根目录设为只读、占用 uploads 文件）触发；exit 7 档用进程环境变量 `JWT_SECRET=` 置空触发（**不修改 `.env`**）；每档触发后环境必须恢复原状。
 - 对应章节：spec §6.1-3、§5.1.3 各场景；design §2.2.2-E、§2.1.3-C 失败行为表。
-- 完成判据：逐档实跑记录「命令 → 退出码 → 首行提示」，八档全部与表一致；所有构造的故障均已清除。另含路径安全守卫档（组 3 增补）：`UPLOAD_DIR`/`CHROMA_DIR`/`DATABASE_URL` 指向 `data/`、项目根、`data/public_kb`（含其子路径/父路径重叠）或 `.env` 文件本身时，`validate_protected_paths` 在占用检测/确认/备份/删除之前拦截 → exit 7 且零写操作；主链与 `--verify-only` 均复用该守卫。
+- 完成判据：逐档实跑记录「命令 → 退出码 → 首行提示」，八档全部与表一致；所有构造的故障均已清除。另含路径安全守卫档（组 3 增补）：`UPLOAD_DIR`/`CHROMA_DIR`/`DATABASE_URL` 指向 `data/`、项目根或 `.env` 文件本身时，`validate_protected_paths` 在占用检测/确认/备份/删除之前拦截 → exit 7 且零写操作；主链与 `--verify-only` 均复用该守卫。
 
 ## 4. 编写 docs/DEMO_SCRIPT.md（默认 5 分钟版 + 可选加长版，PlanView 主路径）
 
@@ -158,7 +160,7 @@
 
 ### 4.1 编写前置检查清单（6 项）
 
-- [x] 在 `docs/DEMO_SCRIPT.md` 中编写前置检查章节，6 项逐项给出命令与「通过标志」：① 执行重置 `cd backend && python scripts/reset_demo_data.py --yes`（通过：摘要含备份路径 + 4 篇 `[OK]` + 退出码 0）；② 启动前后端（通过：`/health` 返回 code=0）；③ 登录 demo / 123456（通过：Dashboard 各卡片有数据）；④ 公共知识库 4 篇均 indexed 且分块数 > 0（通过：知识库页可见 4 篇；或 `GET /api/v1/knowledge/items` 按 scope=public 过滤为 4 条——真实端点口径）；⑤ 周报有数据（通过：报告页可见上周周报）；⑥ 自备上传文件：复制 `data/public_kb/linear_algebra_notes.md` 副本到桌面（重置已清空上传目录）。
+- [x] 在 `docs/DEMO_SCRIPT.md` 中编写前置检查章节，6 项逐项给出命令与「通过标志」：① 执行重置 `cd backend && python scripts/reset_demo_data.py --yes`（通过：摘要含备份路径 + 4 篇 `[OK]` + 退出码 0）；② 启动前后端（通过：`/health` 返回 code=0）；③ 登录 demo / 123456（通过：Dashboard 各卡片有数据）；④ 演示知识库 4 篇均 indexed 且分块数 > 0（通过：知识库页可见 4 篇；或 `GET /api/v1/knowledge/items` 按 file_path 前缀 data/uploads/1/ 核对为 4 篇——真实端点口径）；⑤ 周报有数据（通过：报告页可见上周周报）；⑥ 自备上传文件：复制 `data/uploads/1/2_linear_algebra_notes.md` 副本到桌面（4 篇演示文件重置后保留，第二幕上传副本作为新文档）。
 - 涉及文件：`docs/DEMO_SCRIPT.md`（新增）
 - 实现要点：命令与摘要素材逐字对齐组 3 实际输出；端点写 `GET /api/v1/knowledge/items`（`/knowledge/public` 不存在，spec §5.4.1-2.c 勘误口径）。
 - 对应章节：spec §5.2.1 规则 1；design §2.4.1 骨架第①段、§1.2.6。
@@ -174,9 +176,9 @@
 
 ### 4.3 编写常见问题四类 + 回滚指引附录
 
-- [x] 在 `docs/DEMO_SCRIPT.md` 中编写常见问题章节：① 登录失败（排查顺序：后端是否启动 → 是否已执行重置 → 数据库路径；附备用话术与现场重跑重置指引）；② 知识库检索无结果（先确认 4 篇公共文档 indexed；换用随文档给出的预置问题清单，问题与 4 篇文档内容强相关）；③ LLM 不可用（降级话术「现场网络波动，系统已切换到本地检索结果」；指明周报/计划等不依赖实时 LLM 的环节可继续）；④ 目标拆解失败（改用种子目标「6个月掌握机器学习核心算法」继续演示，不阻塞后续计划生成与报告演示）；附录回滚指引逐字对齐 spec §4.2-3：停后端 → `data/_reset_backup/<YYYYmmdd-HHMMSS>/` 下主文件及 `-wal`/`-shm` 复制回原库路径覆盖 → 重启后端；向量库与上传目录不备份不回滚，由重新执行重置再生成。
+- [x] 在 `docs/DEMO_SCRIPT.md` 中编写常见问题章节：① 登录失败（排查顺序：后端是否启动 → 是否已执行重置 → 数据库路径；附备用话术与现场重跑重置指引）；② 知识库检索无结果（先确认 4 篇演示文档 indexed；换用随文档给出的预置问题清单，问题与 4 篇文档内容强相关）；③ LLM 不可用（降级话术「现场网络波动，系统已切换到本地检索结果」；指明周报/计划等不依赖实时 LLM 的环节可继续）；④ 目标拆解失败（改用种子目标「6个月掌握机器学习核心算法」继续演示，不阻塞后续计划生成与报告演示）；附录回滚指引逐字对齐 spec §4.2-3：停后端 → `data/_reset_backup/<YYYYmmdd-HHMMSS>/` 下主文件及 `-wal`/`-shm` 复制回原库路径覆盖 → 重启后端；向量库与上传目录不备份不回滚，由重新执行重置再生成。
 - 涉及文件：`docs/DEMO_SCRIPT.md`
-- 实现要点：预置问题清单至少 3 条，逐条能在 4 篇公共文档（ml_basics / linear_algebra_notes / probability_formulas / ds_cheatsheet）中找到答案依据。
+- 实现要点：预置问题清单至少 3 条，逐条能在 4 篇演示文档（ml_basics / linear_algebra_notes / probability_formulas / ds_cheatsheet）中找到答案依据。
 - 对应章节：spec §5.2.1 规则 3、§5.2.3 场景 1/2/3、§4.2-3；design §2.4.1 骨架第③④段。
 - 完成判据：模拟 LLM 不可用走查第 3 幕——用启动后端时的进程环境变量（如临时错误的 `LLM_BASE_URL`）或浏览器 DevTools 断网模拟，**不修改 `.env`** → 演示者可按脚本给出不暴露技术故障的降级话术并继续演示；回滚指引与 spec §4.2-3 逐字一致。
 
@@ -195,7 +197,7 @@
 
 ### 5.1 修订「环境要求」+ 新增「演示数据一键重置」节
 
-- [x] 修订 `README.md`「一、环境要求」：保留现有版本表，补「后端 `pip install -r requirements.txt`、前端 `npm install`、一键 `start.bat` / `start.sh`」的串链说明；在「五、一键启动」之后新增「演示数据一键重置」节：`cd backend && python scripts/reset_demo_data.py --yes` 命令、`--yes` / `--no-backup` 语义、预期摘要样例（以组 3 真实跑出的摘要为准贴样例，分块数为真实数字）、公共知识库索引确认方式（知识库页 + 可选验证查询命令）、demo / 123456 账号、常见启动失败处理（8000/5173 端口占用识别与释放、重置后无法登录的排查：核对重置摘要是否完整出现初始化完成 + 4 篇分块验证行，必要时重新执行重置）；节内**明确声明本项目不提供 Docker 容器化与云部署**；同步修订「七、验证方式」中骨架期占位描述为真实登录验证口径。
+- [x] 修订 `README.md`「一、环境要求」：保留现有版本表，补「后端 `pip install -r requirements.txt`、前端 `npm install`、一键 `start.bat` / `start.sh`」的串链说明；在「五、一键启动」之后新增「演示数据一键重置」节：`cd backend && python scripts/reset_demo_data.py --yes` 命令、`--yes` / `--no-backup` 语义、预期摘要样例（以组 3 真实跑出的摘要为准贴样例，分块数为真实数字）、演示知识库索引确认方式（知识库页 + 可选验证查询命令）、demo / 123456 账号、常见启动失败处理（8000/5173 端口占用识别与释放、重置后无法登录的排查：核对重置摘要是否完整出现初始化完成 + 4 篇分块验证行，必要时重新执行重置）；节内**明确声明本项目不提供 Docker 容器化与云部署**；同步修订「七、验证方式」中骨架期占位描述为真实登录验证口径。
 - 涉及文件：`README.md`（修改）
 - 实现要点：摘要样例必须来自真实执行输出（design 未决点 1：真实分块数实跑才知）；依赖安装失败处理给出最低版本核对与镜像源建议（spec §5.3.3 场景 1）。
 - 对应章节：spec §5.3.1 规则 1a/1b、§5.3.3 场景 1/2/3；design §2.4.2 表第 1/2 行。
@@ -203,11 +205,11 @@
 
 ### 5.2 新增「数据集与开源组件说明」章
 
-- [x] 在 `README.md` 新增独立章：`data/public_kb/` 4 篇文档（ml_basics / linear_algebra_notes / probability_formulas / ds_cheatsheet）的来源与用途（课程笔记型自编材料，供知识库检索演示）；主要开源组件清单（SQLite、FastAPI、Vue 3、Element Plus、Chroma、pypdf、OpenAI 兼容 API 等）；声明未使用外部受限数据集。
+- [x] 在 `README.md` 新增独立章：`data/uploads/1/` 4 篇演示上传文件（1_ml_basics / 2_linear_algebra_notes / 3_probability_formulas / 4_ds_cheatsheet）的来源与用途（课程笔记型自编材料，供知识库检索演示）；主要开源组件清单（SQLite、FastAPI、Vue 3、Element Plus、Chroma、pypdf、OpenAI 兼容 API 等）；声明未使用外部受限数据集。
 - 涉及文件：`README.md`
 - 实现要点：组件清单与 `backend/requirements.txt`、`frontend/package.json` 实际依赖一致，不列未使用的组件。
 - 对应章节：spec §5.3.1 规则 1c；design §2.4.2 表第 3 行。
-- 完成判据：章节中 4 篇文档名与 `data/public_kb/` 实际文件逐一对应（`ls data/public_kb/` 比对）；组件清单抽查 3 项均能在依赖文件中找到。
+- 完成判据：章节中 4 篇文档名与 `data/uploads/1/` 实际文件逐一对应（`ls data/uploads/1/` 比对）；组件清单抽查 3 项均能在依赖文件中找到。
 
 ### 5.3 新增「码道（CodeArts）使用说明」章
 
@@ -240,11 +242,11 @@
 
 ### 6.2 门禁 G2：索引终态三条件验证
 
-- [x] 重置完成后用标准库 `sqlite3` 查询新库：4 篇公共文档 `status='indexed'`、每篇 `chunk_count > 0`、每篇 `chunk_count == (SELECT COUNT(*) FROM knowledge_chunks WHERE item_id=?)`；并确认 `data/public_kb/` 4 篇源文档与 `.env` 内容未变（与开工前哈希比对）。
-- 涉及文件：验证对象 `data/smartlearn.db`、`data/public_kb/`、`.env`
+- [x] 重置完成后用标准库 `sqlite3` 查询新库：4 篇演示文档 `status='indexed'`、每篇 `chunk_count > 0`、每篇 `chunk_count == (SELECT COUNT(*) FROM knowledge_chunks WHERE item_id=?)`；并确认 `data/uploads/1/` 4 篇源文档与 `.env` 内容未变（与开工前哈希比对）。
+- 涉及文件：验证对象 `data/smartlearn.db`、`data/uploads/1/`、`.env`
 - 实现要点：查询命令即摘要中「验证查询（可选）」行所附命令，可照抄执行。
 - 对应章节：spec §5.1.1 规则 1a/6a、§4.2-4a、§4.3-1；design §2.2.2-B/D。
-- 完成判据：查询返回 4 行且三条件逐篇成立；`data/public_kb/` 与 `.env` 哈希与开工前一致。
+- 完成判据：查询返回 4 行且三条件逐篇成立；`data/uploads/1/` 与 `.env` 哈希与开工前一致。
 
 ### 6.3 门禁 G3：后端 pytest 全绿
 
@@ -276,7 +278,7 @@
 
 > **G6 实施记录（2026-10-24，浏览器自动化）**：操作走查完成。第 1 幕首次暴露 `toEChartsTree()` 未判空导致 `Cannot read properties of undefined (reading 'map')`，已修复 `frontend/src/utils/goal.ts` 一行并复测通过（知识树 35 个知识点正常渲染）；第 2 幕上传 `linear_algebra_notes.md`，轮询至 indexed（8 chunks）；第 3 幕 Agent 约 28s；第 4 幕生成下周约 14s；第 5 幕 diff + 确认通过；Dashboard 通过。**口播计时未实际朗读，建议现场复核**。截图见仓库外 `.tools/g6-shots/`。
 >
-> 另：G6 复跑时发现未激活 venv 时 README 的 `python scripts/...` 会让子进程缺依赖；脚本已改为自动使用 `backend/.venv` 解释器，系统 Python 复跑 exit 0，4 篇公共文档重新 indexed（8/8/8/9）。
+> 另：G6 复跑时发现未激活 venv 时 README 的 `python scripts/...` 会让子进程缺依赖；脚本已改为自动使用 `backend/.venv` 解释器，系统 Python 复跑 exit 0，4 篇演示文档重新 indexed（8/8/8/9）。
 - 涉及文件：`docs/DEMO_SCRIPT.md`（验证对象）
 - 实现要点：第 4/5 幕严格走 `/plans` 工具栏主路径（W2/W4/W5）；任一环节与脚本描述不符即记录差异并修订文档后重走该幕；走查结果（含每幕通过/差异、总时长）写入本轮汇报。
 - 对应章节：spec §5.2.1 规则 1a/2a、§5.4.1-3；design §2.4.1、风险 R9。
@@ -291,12 +293,12 @@
 | §5.4.1-1 重置验证（连跑两次、摘要三要素） | 3.2、6.1 |
 | §5.4.1-2.a 后端测试 206 passed | 1.1（防收集）、6.3 |
 | §5.4.1-2.b 前端构建通过 | 6.4 |
-| §5.4.1-2.c 公共文档 4 条（真实端点核对） | 2.2（种子 4 篇）、4.1（清单第 ④ 项）、6.2 |
+| §5.4.1-2.c 演示文档 4 条（真实端点核对） | 2.2（种子 4 篇）、4.1（清单第 ④ 项）、6.2 |
 | §5.4.1-2.d demo/123456 登录返回 token | 2.2（种子含 demo）、4.1（清单第 ③ 项）、6.6（实登走查） |
 | §5.4.1-3 文档交付（DEMO_SCRIPT / README） | 4.1–4.4、5.1–5.4 |
 | §5.4.1-4 git 基线对比 | 1.1（开工基线）、6.5（收工对比） |
 | §5.4.1-5 汇报纪律（真实输出） | 6.1–6.6 全部判据（贴原文） |
-| §5.1.1-1a 路径解析（public_kb/.env 原样） | 1.3、2.1、6.2 |
+| §5.1.1-1a 路径解析（uploads 4 篇/.env 原样） | 1.3、2.1、6.2 |
 | §5.1.1-2a 占用拒绝（非零退出 + 提示 + 不删不杀） | 1.4、6.1（前置停后端） |
 | §5.1.1-3a 备份目录含完整副本 | 1.6、6.1 |
 | §5.1.1-4a `--yes` 无阻塞一次完成 | 1.2、1.5、6.1 |

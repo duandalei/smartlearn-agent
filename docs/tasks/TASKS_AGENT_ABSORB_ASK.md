@@ -1,5 +1,7 @@
 # TASKS_AGENT_ABSORB_ASK —— L2 · Agent 吸收 Ask（自动知识库检索 + 来源展示 + 隐藏独立问答页）编码任务清单
 
+> **变更说明（2026-10-25，公共库能力已移除）**：`search_knowledge_base` 的 `scope` 参数已删除，检索恒为当前用户个人库；「个人库为空不得静默扩大为 public/all」规则随之简化为「无命中即据实说明」。下文涉及 scope 三档的历史条目仅作演进记录。
+
 > feature：`agent_absorb_ask`（L2 批次）
 > 状态：已实施并通过 G1–G5（2026-10-25）；含来源卡引用过滤与 A2/A6 日期敏感修复补丁。
 > 上游输入：`.codeartsdoer/specs/agent_absorb_ask/spec.md`（294 行定稿，含 5 处定点修订：统一检索范围口径默认 all、冲突以检索内容为准、个人库为空不得静默扩大、多次检索按 (item_id, chunk_index) 去重、来源卡片必须挂在最终回答下方）；`docs/designs/DESIGN_AGENT_ABSORB_ASK.md`（611 行定稿，含 2 处修正：① 历史回放来源按用户轮次 flush 到本轮最后一个 assistant 块——pendingSources 暂存 + lastAssistant 游标 + user 分支前置 flush + 循环末尾终态 flush，不使用 blockIndex；② §2.4 最终门禁为全量 `pytest -q` + `npm run build`）
@@ -284,7 +286,7 @@
 - [x] 启动前后端，逐条走查七条手工场景并记录结果；随后执行 `git status --short -uall` 与开工基线对比，核对改动仅限前置约定 6 白名单。
 - **涉及文件**：无（纯验证；走查记录附于实现阶段汇报）
 - **实现要点**（前置 + 七场景逐条判据）：
-  0. **前置**：启动前后端后，在知识库上传 `data/public_kb/linear_algebra_notes.md` 的副本，等待状态到 `indexed`；否则个人库为空，场景 1/3 无法验证「个人库来源卡」；
+  0. **前置**：启动前后端后，在知识库上传 `data/uploads/1/2_linear_algebra_notes.md` 的副本，等待状态到 `indexed`；否则个人库为空，场景 1/3 无法验证「个人库来源卡」；
   1. **个人笔记问答**——提问「我的笔记里特征值分解在 PCA 里起什么作用？」→ 回答下方出现来源卡且归属徽章显示「个人库」（spec §5.2.1-1a）；
   2. **公共资料问答**——提问公共资料相关问题（如「机器学习中过拟合是什么？」）→ 来源卡归属显示「公共库」；
   3. **笔记无命中**——限定「我的笔记」提问笔记中不存在的概念 → 回答明确说「你的笔记里没有找到」类表述 + 通用解释 + **无来源卡、无公共来源**（spec §5.1.1-2c/5）；

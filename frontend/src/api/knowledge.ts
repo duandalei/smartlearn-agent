@@ -2,10 +2,10 @@
  * 知识库接口封装（P8，design.md 2.2.2 接口清单）。
  *
  * - POST   /knowledge/upload                上传受理（multipart，进度回调）
- * - GET    /knowledge/items                 文档列表（分页，本人个人库 + 公共库）
+ * - GET    /knowledge/items                 文档列表（分页，仅本人个人库）
  * - GET    /knowledge/items/{id}            文档详情（P9 跳转承接用，按 id 直取）
  * - DELETE /knowledge/items/{id}            删除个人库文档（级联清理）
- * - POST   /knowledge/items/{id}/reindex    重新索引（幂等重跑，公共文档允许）
+ * - POST   /knowledge/items/{id}/reindex    重新索引（幂等重跑）
  * - GET    /knowledge/items/{id}/chunks     按文档查看全部分块
  * - POST   /knowledge/search                语义检索（mode + Top-K 结果）
  *
@@ -42,7 +42,7 @@ export function uploadKnowledge(
 }
 
 /**
- * 分页查询可见文档列表（本人个人库 + 全部公共库，id 降序新上传置顶）。
+ * 分页查询本人可见文档列表（仅个人库，id 降序新上传置顶）。
  *
  * @param page 页码（1 起）。
  * @param page_size 每页条数。
@@ -60,7 +60,7 @@ export function listKnowledgeItems(
 /**
  * 删除个人库文档（SQLite 同步级联删除，向量与原件由后台清理）。
  *
- * @param id 文档 id（公共文档后端拒绝 1004）。
+ * @param id 文档 id（不可见或不存在后端返回 1005）。
  * @returns data 为 null 的成功响应。
  */
 export function deleteKnowledgeItem(id: number): Promise<null> {
@@ -68,7 +68,7 @@ export function deleteKnowledgeItem(id: number): Promise<null> {
 }
 
 /**
- * 触发重新索引（幂等重跑；公共文档允许；处理中状态后端拒绝 1007）。
+ * 触发重新索引（幂等重跑；处理中状态后端拒绝 1007）。
  *
  * @param id 文档 id。
  * @returns 受理结果（item_id + status='parsing'）。
@@ -86,7 +86,7 @@ export function reindexKnowledgeItem(id: number): Promise<KnowledgeUploadResult>
  * 纯追加导出（不改既有函数，与后端裁决 #3 同精神）。
  *
  * @param id 文档 id。
- * @returns 文档对象（本人个人库 + 公共库可见范围）。
+ * @returns 文档对象（仅本人个人库可见范围）。
  */
 export function getKnowledgeItem(id: number): Promise<KnowledgeItem> {
   return request.get(`/knowledge/items/${id}`) as unknown as Promise<KnowledgeItem>
@@ -105,7 +105,7 @@ export function listKnowledgeChunks(itemId: number): Promise<KnowledgeChunk[]> {
 }
 
 /**
- * 语义检索（查询向量化 → 个人库 + 公共库合并排序）。
+ * 语义检索（查询向量化 → 个人库排序）。
  *
  * @param payload 检索入参（query 非空 ≤500 字符；top_k 1~20 默认 5）。
  * @returns mode（online/offline，离线警示条的权威信号）+ 按分数降序的命中列表。

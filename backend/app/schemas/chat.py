@@ -1,8 +1,7 @@
 """AI 学习问答出入参模型（design.md 2.2.2-(1)(2)）。
 
-- ``ChatQAIn``：SSE 问答入参（question + scope 三档，spec 6.1）；
-- ``QaSourceItem``：sources 事件条目 / qa_history.sources 快照条目
-  （六字段，跳转定位与归属徽章的最小集）；
+- ``ChatQAIn``：SSE 问答入参（question；公共库已移除，无 scope）；
+- ``QaSourceItem``：sources 事件条目 / qa_history.sources 快照条目；
 - ``ChatHistoryOut``：历史出参（含 intent——历史回放双信号样式判定
   的前置信号，裁定①）。
 """
@@ -10,26 +9,20 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
-
-# 检索范围三档（spec 4.4 规则 4：前后端共用同一套小写字符串字面量）。
-QaScopeLiteral = Literal["personal", "public", "all"]
 
 
 class ChatQAIn(BaseModel):
     """SSE 流式问答入参（design.md 2.2.2-(1)）。
 
-    越界输入（空 question / 501 字符 / scope 超枚举）经全局处理器
-    自动 422 + 1001 中文提示（spec 5.1.1 规则 6），schema 层零额外
-    代码。
+    越界输入（空 question / 501 字符）经全局处理器自动 422 + 1001
+    中文提示（spec 5.1.1 规则 6），schema 层零额外代码。
 
     Attributes:
         question: 问题文本，去首尾空白后非空，≤500 字符（与检索
             入参上限一致，spec 6.1）。
-        scope: 检索范围三档（personal / public / all），默认 all
-            （小写字面量、大小写敏感）。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -38,7 +31,6 @@ class ChatQAIn(BaseModel):
         str,
         StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
     ]
-    scope: QaScopeLiteral = "all"
 
 
 class QaSourceItem(BaseModel):
@@ -54,7 +46,7 @@ class QaSourceItem(BaseModel):
         content: 命中片段正文（原文，不截断改写）。
         source_title: 来源展示名（「文档标题 » 标题路径」）。
         score: 相似度分数（1 − cosine 距离，保留 4 位小数）。
-        scope: 归属（personal / public，徽章色依据）。
+        scope: 归属（当前恒为 personal）。
     """
 
     item_id: int | None = None

@@ -217,21 +217,18 @@ _TOOL_SPECS: list[ToolSpec] = [
         func=search_knowledge_base,
         params_model=SearchKnowledgeBaseParams,
         description=(
-            "在学习知识库中语义检索学习资料片段。当用户问知识型问题（如概念"
-            "解释、公式、算法原理）且需要引用学习资料回答时调用。参数：query"
-            "（必填字符串，1–500 字符，用自然语言描述要查的内容）；top_k"
-            "（可选整数，1–20，默认 5，期望返回条数）；scope（可选，"
-            "personal=仅当前用户上传的个人库 / public=系统预置公共库 / "
-            "all=两者合并，默认 all）。返回 {mode, results}：mode 为 online"
+            "在学习知识库中语义检索学习资料片段（仅当前用户的个人库）。"
+            "当用户问知识型问题（如概念解释、公式、算法原理）且需要引用"
+            "学习资料回答时调用。参数：query（必填字符串，1–500 字符，用"
+            "自然语言描述要查的内容）；top_k（可选整数，1–20，默认 5，"
+            "期望返回条数）。返回 {mode, results}：mode 为 online"
             "（正常向量检索）或 offline（向量化服务降级后的检索，结果置信度"
             "较低）；results 按相似度降序、最多 top_k 条，每条含 content"
             "（片段正文）、source_title（来源标题»章节路径）、score（相似度"
             "分数）、item_id（来源文档 id）、chunk_index（分块序号）、scope"
-            "（该条归属 personal/public）。无命中返回空 results，不是错误。"
-            "scope 填法：用户说「我的笔记/我上传的/资料里/文档里」用 "
-            "personal；明确说「公共资料/公共课程资料」用 public；未指明范围"
-            "一律用默认 all（即使问题像公共概念）；用户限定 personal 无命中"
-            "时直接据实回答，不得自行改用 public/all 重试。"
+            "（当前恒为 personal）。无命中返回空 results，不是错误。"
+            "公共库已移除，无 scope 参数；用户说「我的笔记/我上传的/资料里」"
+            "就是检索个人库；无命中时直接据实回答，不得编造来源。"
         ),
     ),
     ToolSpec(

@@ -1,5 +1,7 @@
 # L2 · Agent 吸收 Ask：自动知识库检索 + 来源展示 + 隐藏独立问答页 — 技术设计文档
 
+> **变更说明（2026-10-25，公共库能力已移除）**：`search_knowledge_base` 的 `scope` 参数已删除，检索恒为当前用户个人库。下文涉及 public/all 档位的历史设计仅作演进记录。
+
 - 输入规格：`.codeartsdoer/specs/agent_absorb_ask/spec.md`（294 行，含 5 处定点修订）
 - 产物路径：`docs/designs/DESIGN_AGENT_ABSORB_ASK.md`（同步副本 `.codeartsdoer/specs/agent_absorb_ask/design.md`）
 - 本轮边界：不合并两套会话存储/SSE（L3 范围）；不删除 `/chat/qa`、`/chat/history`、`AskView.vue`、`components/ask/*`；不新增依赖；不改库结构

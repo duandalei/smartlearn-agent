@@ -3,12 +3,10 @@
 模块职责（design.md 2.3.2-B / 2.4.1）：
 - ``PersistentClient`` 模块级懒加载单例（``settings.CHROMA_DIR``，
   目录幂等创建；chromadb client 线程安全，兼容后台任务与请求并发）；
-- collection 按「归属 × 向量空间」划分四类：
-  ``kb_user_{user_id}`` / ``kb_user_{user_id}_local`` /
-  ``kb_public`` / ``kb_public_local``——个人库按 user_id 分
-  collection 实现「物理隔离即权限隔离」（spec 4.2 规则 5：不存在
-  跨用户查询路径）；公共库向量独立成 ``kb_public*``，与
-  ``scope=public / user_id=NULL`` 的关系口径一一对应；
+- collection 按「用户 × 向量空间」划分两类：
+  ``kb_user_{user_id}`` / ``kb_user_{user_id}_local``——按 user_id
+  分 collection 实现「物理隔离即权限隔离」（spec 4.2 规则 5：不存在
+  跨用户查询路径）；
 - 度量统一 cosine（Chroma 默认 l2，必须显式指定）；
   ``score = 1 - distance``（cosine distance ∈ [0,2] → score ∈
   [-1,1]），保留 4 位小数；
@@ -112,22 +110,21 @@ def _reset_vector_store() -> None:
 
 
 def _collection_name(scope: str, user_id: int | None, mode: EmbedMode) -> str:
-    """按「归属 × 向量空间」推导 collection 名。
+    """按「个人库 × 向量空间」推导 collection 名（公共库已移除）。
 
     Args:
-        scope: 归属作用域（"personal" / "public"，来自
-            knowledge_items.scope）。
-        user_id: 归属用户 id（personal 必填，public 恒 None）。
+        scope: 归属作用域（仅 personal）。
+        user_id: 归属用户 id（必填）。
         mode: 向量空间模式（online=在线 embedding / offline=本地兜底）。
 
     Returns:
         str: collection 名（满足 Chroma 3-63 字符命名规则）。
 
     Raises:
-        ValueError: personal 归属缺少 user_id（不可达防御分支）。
+        ValueError: 非 personal 归属或缺少 user_id。
     """
-    if scope == "public":
-        return "kb_public" if mode == "online" else "kb_public_local"
+    if scope != "personal":
+        raise ValueError("公共库能力已移除，知识库仅支持 personal 归属")
     if user_id is None:
         raise ValueError("personal 归属的 collection 必须提供 user_id")
     return f"kb_user_{user_id}" if mode == "online" else f"kb_user_{user_id}_local"
@@ -137,8 +134,8 @@ def _collection(scope: str, user_id: int | None, mode: EmbedMode) -> Any:
     """获取（或创建）对应归属与模式的 collection。
 
     Args:
-        scope: 归属作用域（"personal" / "public"）。
-        user_id: 归属用户 id（public 传 None）。
+        scope: 归属作用域（仅 personal）。
+        user_id: 归属用户 id（必填）。
         mode: 向量空间模式。
 
     Returns:
@@ -224,8 +221,8 @@ def delete_item_vectors(item_id: int, scope: str, user_id: int | None) -> None:
 
     Args:
         item_id: 文档 id。
-        scope: 归属作用域（"personal" / "public"）。
-        user_id: 归属用户 id（public 传 None）。
+        scope: 归属作用域（仅 personal）。
+        user_id: 归属用户 id（必填）。
     """
     for mode in ("online", "offline"):
         collection = _collection(scope, user_id, mode)
@@ -237,21 +234,14 @@ def query_visible(
     query_vector: list[float],
     top_k: int,
     mode: EmbedMode,
-    scope: str = "all",
 ) -> list[dict[str, Any]]:
-    """按检索范围档位在可见 collection 中检索并合并（P9 scope 扩展）。
+    """在个人库 collection 中检索（公共库已移除）。
 
     按 mode 选库（design.md 2.4.1 规则 2：查询向量与被查库必然
-    同空间——online 查 ``kb_user_{uid}`` / ``kb_public``；offline
-    查对应 ``_local`` 库）；**过滤发生在 collection 选择层**（P9
-    design.md 2.5）而非 SQL where 或 Chroma where metadata——
-    ``personal`` 仅查本人个人库、``public`` 仅查公共库、``all``
-    维持两路合并（现状行为原样）。隔离红线结构性继承：双层知识库
-    的物理隔离就是 collection 级（``kb_user_{uid}`` 分库即权限边界），
-    personal 档在存储结构上不可能命中他用户内容（验收 D4 的结构性
-    保证）。每库 ``n_results = min(top_k, count)`` 且 ``count()==0``
-    直接跳过（空库查询防御）；命中合并后按 score 降序截断 top_k
-    （单路档位时合并退化为恒等）。
+    同空间——online 查 ``kb_user_{uid}``、offline 查对应 ``_local``
+    库）；隔离红线结构性继承：``kb_user_{uid}`` 分库即权限边界，
+    在存储结构上不可能命中他用户内容。``count()==0`` 直接跳过
+    （空库查询防御）。
 
     Args:
         user_id: 当前用户 id（决定个人库 collection，跨用户命中在
@@ -259,48 +249,37 @@ def query_visible(
         query_vector: 查询向量（与 mode 同空间）。
         top_k: 期望命中条数上限。
         mode: 查询向量空间模式。
-        scope: 检索范围三档（personal / public / all），默认 all
-            （前向兼容：不传时行为与扩展前逐行一致）。
 
     Returns:
         list[dict[str, Any]]: 命中列表（content / item_id /
         chunk_index / scope / title / heading_path / score，按 score
         降序）；空库返回空列表。
     """
-    if scope == "personal":
-        targets: tuple[tuple[str, int | None], ...] = (
-            ("personal", user_id),
-        )
-    elif scope == "public":
-        targets = (("public", None),)
-    else:
-        targets = (("personal", user_id), ("public", None))
+    collection = _collection("personal", user_id, mode)
+    total = collection.count()
+    if total == 0:
+        return []
+    result = collection.query(
+        query_embeddings=[list(query_vector)],
+        n_results=min(top_k, total),
+        include=["documents", "metadatas", "distances"],
+    )
+    documents = result["documents"][0]
+    metadatas = result["metadatas"][0]
+    distances = result["distances"][0]
     hits: list[dict[str, Any]] = []
-    for owner_scope, owner_id in targets:
-        collection = _collection(owner_scope, owner_id, mode)
-        total = collection.count()
-        if total == 0:
-            continue
-        result = collection.query(
-            query_embeddings=[list(query_vector)],
-            n_results=min(top_k, total),
-            include=["documents", "metadatas", "distances"],
+    for document, metadata, distance in zip(documents, metadatas, distances):
+        meta = metadata or {}
+        hits.append(
+            {
+                "content": document,
+                "item_id": meta.get("item_id"),
+                "chunk_index": meta.get("chunk_index"),
+                "scope": "personal",
+                "title": meta.get("title", ""),
+                "heading_path": meta.get("heading_path", ""),
+                "score": round(1.0 - float(distance), 4),
+            }
         )
-        documents = result["documents"][0]
-        metadatas = result["metadatas"][0]
-        distances = result["distances"][0]
-        for document, metadata, distance in zip(documents, metadatas, distances):
-            meta = metadata or {}
-            hits.append(
-                {
-                    "content": document,
-                    "item_id": meta.get("item_id"),
-                    "chunk_index": meta.get("chunk_index"),
-                    "scope": meta.get("scope", owner_scope),
-                    "title": meta.get("title", ""),
-                    "heading_path": meta.get("heading_path", ""),
-                    "score": round(1.0 - float(distance), 4),
-                }
-            )
     hits.sort(key=lambda hit: hit["score"], reverse=True)
     return hits[:top_k]

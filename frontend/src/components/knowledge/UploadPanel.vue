@@ -124,6 +124,7 @@ function rowStatusText(row: UploadRow): string {
       </div>
       <template #tip>
         <div class="el-upload__tip">支持 PDF / DOCX / PPTX / MD / TXT，单个文件 ≤ 20MB</div>
+        <div class="el-upload__tip">上传文档进入你的个人知识库，仅自己可见。</div>
       </template>
     </el-upload>
     <div v-if="uploadRows.length" class="upload-rows">

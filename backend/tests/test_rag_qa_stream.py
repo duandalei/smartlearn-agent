@@ -44,12 +44,11 @@ def _ask(
     client: Any,
     user: dict[str, Any],
     question: str,
-    scope: str = "all",
 ) -> Any:
     """发起一次 SSE 问答，返回原始响应（TestClient 消费完整流）。"""
     return client.post(
         "/api/v1/chat/qa",
-        json={"question": question, "scope": scope},
+        json={"question": question},
         headers=user["headers"],
     )
 
@@ -93,7 +92,7 @@ def _history(
 def test_stream_grounded_event_sequence(
     app_client: Any,
     user_a: dict[str, Any],
-    public_docs: list[int],
+    demo_docs: list[int],
     offline_embedding: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -117,11 +116,11 @@ def test_stream_grounded_event_sequence(
     assert types.count("done") == 1
 
     sources_event = events[0]
-    assert sources_event["data"], "公共文档必须检索命中"
+    assert sources_event["data"], "演示文档必须检索命中"
     for hit in sources_event["data"]:
         assert hit["item_id"] > 0
         assert hit["chunk_index"] >= 0
-        assert hit["scope"] in ("personal", "public")
+        assert hit["scope"] == "personal"
 
     deltas = [e["data"] for e in events[1:-1]]
     assert deltas == ["Transformer 是", "一种基于", "自注意力的架构"]
@@ -178,7 +177,7 @@ def test_stream_ungrounded_empty_library(
 def test_stream_knowledge_below_threshold(
     app_client: Any,
     user_a: dict[str, Any],
-    public_docs: list[int],
+    demo_docs: list[int],
     offline_embedding: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -191,8 +190,8 @@ def test_stream_knowledge_below_threshold(
 
     raw_calls: dict[str, Any] = {}
 
-    async def spy_search(db: Any, user_id: int, query: str, top_k: int, scope: str = "all") -> dict[str, Any]:
-        result = await _real_search(db, user_id, query, top_k, scope)
+    async def spy_search(db: Any, user_id: int, query: str, top_k: int) -> dict[str, Any]:
+        result = await _real_search(db, user_id, query, top_k)
         raw_calls["result"] = result
         return result
 
@@ -220,7 +219,7 @@ def test_stream_knowledge_below_threshold(
 def test_stream_chat_intent_skips_retrieval(
     app_client: Any,
     user_a: dict[str, Any],
-    public_docs: list[int],
+    demo_docs: list[int],
     offline_embedding: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -228,7 +227,7 @@ def test_stream_chat_intent_skips_retrieval(
     calls = {"count": 0}
 
     async def counting_search(
-        db: Any, user_id: int, query: str, top_k: int, scope: str = "all"
+        db: Any, user_id: int, query: str, top_k: int
     ) -> dict[str, Any]:
         calls["count"] += 1
         return {"mode": "online", "results": []}
@@ -280,8 +279,7 @@ def test_qa_requires_auth(app_client: Any) -> None:
     [
         {"question": "   "},  # 去空白后为空
         {"question": "超" * 501},  # 超长
-        {"question": "有效问题", "scope": "foo"},  # scope 越界
-        {"question": "有效问题", "scope": "ALL"},  # 大小写敏感
+        {"question": "有效问题", "scope": "personal"},  # 已移除的 scope 字段
         {"question": "有效问题", "extra": 1},  # 多余字段
     ],
 )
@@ -309,7 +307,7 @@ def test_history_requires_auth(app_client: Any) -> None:
 def test_stream_llm_create_failure_yields_error(
     app_client: Any,
     user_a: dict[str, Any],
-    public_docs: list[int],
+    demo_docs: list[int],
     offline_embedding: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -370,7 +368,7 @@ def test_stream_search_failure_yields_error(
     """检索失败（3001）：恰一条 error 收尾，不伪装为无据降级。"""
 
     async def failing_search(
-        db: Any, user_id: int, query: str, top_k: int, scope: str = "all"
+        db: Any, user_id: int, query: str, top_k: int
     ) -> dict[str, Any]:
         raise BizException(3001, "检索失败请稍后重试", http_status=500)
 
@@ -393,7 +391,7 @@ def test_stream_search_failure_yields_error(
 def test_stream_persists_after_done(
     app_client: Any,
     user_a: dict[str, Any],
-    public_docs: list[int],
+    demo_docs: list[int],
     offline_embedding: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -401,7 +399,7 @@ def test_stream_persists_after_done(
     monkeypatch.setattr(settings, "RAG_MIN_SCORE", 0.0)
     _install_fake_llm(monkeypatch, ["片段一", "片段二", "片段三"])
 
-    resp = _ask(app_client, user_a, "什么是 Transformer", scope="public")
+    resp = _ask(app_client, user_a, "什么是 Transformer")
     events = _parse_sse(resp.text)
     done = events[-1]["data"]
     history_id = done["history_id"]

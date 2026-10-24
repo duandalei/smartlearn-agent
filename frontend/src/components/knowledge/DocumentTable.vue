@@ -2,16 +2,15 @@
 /**
  * 知识库文档列表（P8，design.md 2.6.2-B）。
  *
- * - 列：标题（公共文档加「公共」tag）、类型、大小（formatFileSize）、
- *   分块数、状态（四色 tag）、失败原因（failed 行直显 error_msg）、
- *   上传时间、操作列。
+ * - 列：标题、类型、大小（formatFileSize）、分块数、状态（四色
+ *   tag）、失败原因（failed 行直显 error_msg）、上传时间、操作列。
  * - 操作：查看分块（indexed 行）、重新索引（全部行，处理中禁用）、
- *   删除（仅个人库行渲染；公共行不渲染删除按钮）。
+ *   删除（全部行；公共库能力已移除）。
  * - 删除带 ElMessageBox.confirm；删除/重索引完成后 emit 'refresh'
  *   （视图刷新列表——重索引后存在 parsing 状态会自动启动轮询）。
  * - 分页 el-pagination 对齐后端 page/page_size/total；排序依赖后端
  *   id desc（新上传置顶），前端不排序。
- * - 错误提示由 request.ts 拦截器统一弹出（如公共文档误删 1004）。
+ * - 错误提示由 request.ts 拦截器统一弹出（如越权删除 1005）。
  */
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -71,7 +70,7 @@ async function handleDelete(item: KnowledgeItem): Promise<void> {
     ElMessage.success('已删除')
     emit('refresh')
   } catch {
-    // 错误提示由拦截器统一弹出（如 1004 公共文档不可删除）。
+    // 错误提示由拦截器统一弹出（如 1005 文档不可见）。
   } finally {
     deletingIds.delete(item.id)
   }
@@ -93,7 +92,6 @@ async function handleReindex(item: KnowledgeItem): Promise<void> {
   <el-table :data="props.items" v-loading="props.loading" stripe>
     <el-table-column label="标题" min-width="220" show-overflow-tooltip>
       <template #default="{ row }">
-        <el-tag v-if="row.scope === 'public'" size="small" class="scope-tag">公共</el-tag>
         <span>{{ row.title }}</span>
       </template>
     </el-table-column>
@@ -148,7 +146,6 @@ async function handleReindex(item: KnowledgeItem): Promise<void> {
           重新索引
         </el-button>
         <el-button
-          v-if="row.scope === 'personal'"
           link
           type="danger"
           size="small"
@@ -174,9 +171,6 @@ async function handleReindex(item: KnowledgeItem): Promise<void> {
 </template>
 
 <style scoped>
-.scope-tag {
-  margin-right: 6px;
-}
 .error-msg {
   color: var(--el-color-danger);
   font-size: 13px;

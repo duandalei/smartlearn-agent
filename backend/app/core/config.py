@@ -126,7 +126,6 @@ class Settings(BaseSettings):
 
     # ---- 上传目录 ---------------------------------------------------------
     UPLOAD_DIR: str = (DATA_DIR / "uploads").as_posix()
-    PUBLIC_KB_DIR: str = (DATA_DIR / "public_kb").as_posix()
 
     # ---- CORS -------------------------------------------------------------
     # 前端开发服务器默认端口 5173。

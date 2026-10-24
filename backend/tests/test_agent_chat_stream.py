@@ -839,7 +839,7 @@ def _search_hit(idx: int, content_len: int = 30) -> dict[str, Any]:
         "score": round(0.9 - idx * 0.01, 4),
         "item_id": idx + 1,
         "chunk_index": idx,
-        "scope": "personal" if idx % 2 else "public",
+        "scope": "personal",
     }
 
 
@@ -909,7 +909,7 @@ def test_search_sources_hit(
     for s in sources:
         assert set(s.keys()) == _SOURCE_KEYS
         assert len(s["content"]) <= 240
-        assert s["scope"] in ("personal", "public")
+        assert s["scope"] == "personal"
         assert isinstance(s["score"], float)
 
 
@@ -967,4 +967,4 @@ def test_search_sources_truncation_and_limit(
     for s in sources:
         assert len(s["content"]) <= 240
         assert set(s.keys()) == _SOURCE_KEYS
-        assert s["scope"] in ("personal", "public")
+        assert s["scope"] == "personal"

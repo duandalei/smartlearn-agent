@@ -1,5 +1,7 @@
 # RAG AI 学习问答需求规格（SPEC_RAG_QA）
 
+> **变更说明（2026-10-25，公共库能力已移除）**：`ChatQAIn.scope`（personal/public/all 三档）已删除，问答检索恒为当前用户个人库；来源 `scope` 恒为 personal。下文涉及 scope 档位与公共库的历史规格条目仅作演进记录，不再作为现行契约。
+
 | 项目 | 内容 |
 |---|---|
 | 所属项目 | 彭城智学 SmartLearn Agent |

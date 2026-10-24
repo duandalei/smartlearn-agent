@@ -68,7 +68,7 @@ const SOURCE_CONTENT_MAX_LEN = 240
 
 /** 空态知识库轻提示（spec §5.2.1-6——L2 agent_absorb_ask）。 */
 const KNOWLEDGE_HINT =
-  '可以直接问知识库——我会自动检索你的笔记和公共资料，并在回答下方标注来源'
+  '可以直接问知识库——我会自动检索你的笔记，并在回答下方标注来源'
 
 // ---------------------------------------------------------------------------
 // 来源规范化与块级合并（L2 agent_absorb_ask，design 2.1.3-C）
@@ -82,7 +82,7 @@ function sourceDedupKey(s: QaSourceItem): string {
 
 /**
  * 单一口径规范化（纯函数零副作用）：六字段白名单——content/title 缺失
- * 整条丢弃、存在则强制 String()；scope 仅认 personal/public；score 强制
+ * 整条丢弃、存在则强制 String()；scope 仅认 personal；score 强制
  * Number()（NaN 置 0）；item_id/chunk_index 可空但非空须为数（否则置
  * null 降级）；content 截 240；按 (item_id, chunk_index) 去重；≤20；
  * 全坏返回 []。
@@ -94,7 +94,7 @@ function normalizeSources(raw: unknown): QaSourceItem[] {
     if (typeof item !== 'object' || item === null) continue
     const rec = item as Record<string, unknown>
     if (rec.content == null || rec.source_title == null) continue
-    if (rec.scope !== 'personal' && rec.scope !== 'public') continue
+    if (rec.scope !== 'personal') continue
     const score = Number(rec.score)
     const normalized: QaSourceItem = {
       source_title: String(rec.source_title),

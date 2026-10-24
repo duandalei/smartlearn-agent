@@ -1,8 +1,7 @@
 """知识库模型（knowledge_items / knowledge_chunks）。
 
-文档与分块强从属（CASCADE）。双层知识库可见性：
-``scope=public`` 系统预置只读（``user_id`` 为 NULL，全用户可见）；
-``scope=personal`` 学生上传（仅本人可见）。
+文档与分块强从属（CASCADE）。知识库仅个人库：
+``scope=personal`` 学生上传（仅本人可见）；公共库能力已移除。
 """
 
 from __future__ import annotations
@@ -19,15 +18,15 @@ class KnowledgeItem(TimestampMixin, Base):
 
     Attributes:
         id: 主键。
-        user_id: 外键 users.id；personal 必填，public 为 NULL。
+        user_id: 外键 users.id；文档归属用户。
         title: 文档标题。
         source_type: pdf / md / txt / docx / pptx / note。
         file_path: 原始文件路径（note 类型可空）。
-        scope: personal / public。
+        scope: 归属范围（当前恒为 personal）。
         status: pending / parsing / indexed / failed。
         error_msg: 解析或向量化失败原因（failed 时必填）。
         chunk_count: 切分后的分块数。
-        file_size: 原件字节数，上传受理写入，存量公共文档由启动迁移回填
+        file_size: 原件字节数，上传受理写入，存量文档由启动迁移回填
             （字段定义见 design.md 2.3.2-A 与契约 PROJECT_CONTEXT §6.9）。
     """
 
@@ -38,7 +37,7 @@ class KnowledgeItem(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         index=True,
         nullable=True,
-        comment="personal 必填；public 为 NULL",
+        comment="文档归属用户（历史库兼容保留可空）",
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     source_type: Mapped[KnowledgeSourceType] = mapped_column(
@@ -54,7 +53,7 @@ class KnowledgeItem(TimestampMixin, Base):
         default=KnowledgeScope.PERSONAL,
         index=True,
         nullable=False,
-        comment="personal/public",
+        comment="personal（公共库已移除）",
     )
     status: Mapped[KnowledgeItemStatus] = mapped_column(
         sa_enum(KnowledgeItemStatus),
@@ -71,7 +70,7 @@ class KnowledgeItem(TimestampMixin, Base):
     file_size: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
-        comment="原件字节数，上传受理写入，存量公共文档由启动迁移回填",
+        comment="原件字节数，上传受理写入，存量文档由启动迁移回填",
     )
 
     user: Mapped["User | None"] = relationship(  # noqa: F821
@@ -88,7 +87,7 @@ class KnowledgeChunk(CreatedAtMixin, Base):
     Attributes:
         id: 主键。
         item_id: 外键 knowledge_items.id（CASCADE）。
-        user_id: 冗余外键 users.id（public 为 NULL，便于按用户过滤）。
+        user_id: 冗余外键 users.id（便于按用户过滤）。
         chunk_index: 分块序号，从 0 开始。
         content: 分块文本内容。
         heading_path: 标题层级路径（如「机器学习基础 > Transformer > 多头注意力」），
@@ -110,7 +109,7 @@ class KnowledgeChunk(CreatedAtMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         index=True,
         nullable=True,
-        comment="冗余列：personal 归属用户；public 为 NULL",
+        comment="冗余列：分块归属用户",
     )
     chunk_index: Mapped[int] = mapped_column(
         Integer, nullable=False, comment="分块序号，从 0 开始"

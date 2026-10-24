@@ -99,7 +99,7 @@ function fmtScore(score: number): string {
       </template>
       <el-empty v-else description="未命中相关内容" :image-size="80" />
     </div>
-    <div v-else class="search-hint">输入问题并点击搜索，将同时在个人库与公共库中检索最相关的片段。</div>
+    <div v-else class="search-hint">输入问题并点击搜索，将在你的个人知识库中检索最相关的片段。</div>
   </div>
 </template>
 

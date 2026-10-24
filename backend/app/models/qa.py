@@ -19,7 +19,7 @@ chat 与 knowledge 无据两种记录的既有字段完全同构
 VARCHAR 不设 CHECK（与 ``learning_reports.report_type`` 等既有
 轻量枚举列惯例对齐，值为代码唯一写入点控制）。
 
-检索档位 scope 不落库（裁决 #5 字段清单不含；当次请求参数）。
+检索范围不落库（裁决 #5 字段清单不含；公共库移除后检索恒为个人库）。
 """
 
 from __future__ import annotations

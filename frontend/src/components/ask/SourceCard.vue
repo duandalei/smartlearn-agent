@@ -4,8 +4,7 @@
  *
  * 卡片内容：来源标题（source_title）+ 片段摘要（折叠两行 / 展开
  * 全文）+ 相似度徽章（保留 2 位，沿用 SearchPanel 惯例）+ 归属徽章
- * （personal → 个人库 primary / public → 公共库 info）+ 右上角 [n]
- * 序号（与回答中引用编号一一对应）。
+ * （个人库 primary）+ 右上角 [n] 序号（与回答中引用编号一一对应）。
  *
  * 同文档多片段不去重合并：逐条独立卡片、编号连续（spec 5.4.1
  * 规则 6）。跳转：emit navigate 由视图统一 router.push；item_id
@@ -29,15 +28,11 @@ const emit = defineEmits<{
 
 const expanded = ref(false)
 
-/** 归属徽章类型（personal → primary / public → info）。 */
-const scopeTagType = computed(() =>
-  props.source.scope === 'personal' ? 'primary' : 'info',
-)
+/** 归属徽章类型（仅个人库）。 */
+const scopeTagType = computed(() => 'primary' as const)
 
-/** 归属徽章文案。 */
-const scopeLabel = computed(() =>
-  props.source.scope === 'personal' ? '个人库' : '公共库',
-)
+/** 归属徽章文案（仅个人库）。 */
+const scopeLabel = computed(() => '个人库')
 
 /** 相似度展示（保留 2 位，与 SearchPanel 同口径）。 */
 const fmtScore = computed(() => props.source.score.toFixed(2))

@@ -778,22 +778,26 @@ def _seed_records(
         )
 
 
-def _seed_knowledge(db: Session) -> None:
-    """写入 4 篇公共知识库文档元数据与 4 个分块。
+def _seed_knowledge(db: Session, user: User) -> None:
+    """写入 4 篇演示知识库文档元数据与 4 个分块（归属 demo 个人库）。
 
     P2 只落库元数据与预置分块文本，不调用 Embedding（embedding_id
-    恒为 NULL，文件本体由 RAG / P13 阶段放置）。
+    恒为 NULL）；原件作为 demo 用户的普通上传文件放在
+    ``data/uploads/{user_id}/``，由重置脚本或用户手动触发重索引
+    写入向量。
 
     Args:
         db: 数据库会话。
+        user: 演示用户（4 篇文档归入其个人库）。
     """
+    prefix = f"data/uploads/{user.id}"
     items: list[tuple[str, str, str, int]] = [
-        ("机器学习核心概念速览", "md", "data/public_kb/ml_basics.md", 2),
+        ("机器学习核心概念速览", "md", f"{prefix}/1_ml_basics.md", 2),
         ("线性代数要点笔记：特征值与矩阵分解", "md",
-         "data/public_kb/linear_algebra_notes.md", 1),
+         f"{prefix}/2_linear_algebra_notes.md", 1),
         ("概率论与数理统计公式表", "md",
-         "data/public_kb/probability_formulas.md", 1),
-        ("数据结构常见考点速查", "md", "data/public_kb/ds_cheatsheet.md", 0),
+         f"{prefix}/3_probability_formulas.md", 1),
+        ("数据结构常见考点速查", "md", f"{prefix}/4_ds_cheatsheet.md", 0),
     ]
     type_map = {
         "pdf": KnowledgeSourceType.PDF,
@@ -803,11 +807,11 @@ def _seed_knowledge(db: Session) -> None:
     created: list[KnowledgeItem] = []
     for title, source_type, file_path, chunk_count in items:
         item = KnowledgeItem(
-            user_id=None,
+            user_id=user.id,
             title=title,
             source_type=type_map[source_type],
             file_path=file_path,
-            scope=KnowledgeScope.PUBLIC,
+            scope=KnowledgeScope.PERSONAL,
             status=KnowledgeItemStatus.INDEXED,
             error_msg=None,
             chunk_count=chunk_count,
@@ -834,7 +838,7 @@ def _seed_knowledge(db: Session) -> None:
         db.add(
             KnowledgeChunk(
                 item_id=created[item_idx].id,
-                user_id=None,
+                user_id=user.id,
                 chunk_index=0 if item_idx != 0 else chunks.index(
                     (item_idx, content)
                 ) % 2,
@@ -1099,7 +1103,7 @@ def _seed_all(db: Session) -> None:
     tasks = _seed_tasks(db, user, goals, courses, today, now)
     _seed_plan(db, user, goals, tasks, today)
     _seed_records(db, user, courses, tasks, today)
-    _seed_knowledge(db)
+    _seed_knowledge(db, user)
     _seed_mistakes(db, user, courses)
     _seed_mastery(db, user, now)
     _seed_agent(db, user, now)

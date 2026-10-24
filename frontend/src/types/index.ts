@@ -416,8 +416,8 @@ export interface AdviceData {
 /** 文档处理状态（对齐后端 KnowledgeItemStatus 枚举：D1 裁决四态）。 */
 export type KnowledgeItemStatus = 'pending' | 'parsing' | 'indexed' | 'failed'
 
-/** 文档归属（对齐后端 KnowledgeScope 枚举：个人库 / 公共库）。 */
-export type KnowledgeScope = 'personal' | 'public'
+/** 文档归属（公共库能力已移除，仅个人库）。 */
+export type KnowledgeScope = 'personal'
 
 /** 知识库文档（对齐后端 KnowledgeItemOut，列表与详情共用）。 */
 export interface KnowledgeItem {
@@ -484,9 +484,6 @@ export interface KnowledgeSearchResult {
 // AI 学习问答（P9，RAG QA）
 // ---------------------------------------------------------------------------
 
-/** 检索范围三档（对齐后端 ChatQAIn.scope，前后端共用同一套小写字面量）。 */
-export type QaScope = 'personal' | 'public' | 'all'
-
 /** 问题意图（对齐后端 done.data.intent / qa_history.intent，R3 新增）。 */
 export type QaIntent = 'knowledge' | 'chat'
 
@@ -519,10 +516,9 @@ export type QaSseEvent =
     }
   | { type: 'error'; data: { code: number; message: string } }
 
-/** 问答请求体（POST /chat/qa）。 */
+/** 问答请求体（POST /chat/qa；公共库已移除，无 scope）。 */
 export interface ChatQaPayload {
   question: string
-  scope?: QaScope
 }
 
 /** 历史问答条目（对齐后端 ChatHistoryOut，含 intent——回放双信号

@@ -5,7 +5,7 @@
    ``file_path`` 非空且 ``file_size IS NULL`` 的行按文件系统 stat 回填
    字节数（文件缺失时保持 NULL 并记 warning，不阻断启动）；
 2. ``knowledge_chunks`` 补 ``heading_path TEXT NULL`` 列（历史分块
-   不回填，由公共文档重索引写入真实值，见 design.md 2.5）；
+   不回填，由文档重索引写入真实值，见 design.md 2.5）；
 3. ``qa_history`` 建表条目（P9，design.md 1.2.4）：main.py 启动时
    不调 create_all，仅把 QAHistory 注册进 ``Base.metadata`` 而不追加
    建表条目的话，**存量库（demo 用户已存在、永不重跑种子）重启后
@@ -61,7 +61,7 @@ def _backfill_file_size(conn: object) -> None:
     """回填 ``knowledge_items.file_size``（仅 file_path 非空且 file_size 为 NULL 的行）。
 
     路径解析口径：``file_path`` 存相对项目根的 POSIX 路径（如
-    ``data/public_kb/ml_basics.md``）或绝对路径（测试播种），按
+    ``data/uploads/1/1_ml_basics.md``）或绝对路径（测试播种），按
     PROJECT_ROOT 拼接后 stat 取字节数；文件缺失保持 NULL 并记
     warning，不阻断启动（原件被外部移动不应拖垮服务）。
 

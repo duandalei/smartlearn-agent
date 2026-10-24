@@ -1,9 +1,8 @@
 """多用户隔离与写操作防护集成测试（tasks.md 5.6）。
 
 覆盖：列表隔离 / 详情与分块「不可见即不存在」1005 / 检索隔离 /
-公共库删除保护 1004 / 公共文档重索引允许（spec 5.4.1 规则 3 裁决）/
-pending、parsing 状态重索引防护 1007 / 删除级联（列表、详情、
-分块、检索、SQLite chunk 行全维度收敛）。
+个人文档重索引 / pending、parsing 状态重索引防护 1007 / 删除级联
+（列表、详情、分块、检索、SQLite chunk 行全维度收敛）。
 """
 
 from __future__ import annotations
@@ -119,45 +118,6 @@ def test_search_isolation_between_users(
 
     results_b_self = _search(app_client, user_b, "通货膨胀菲利普斯曲线")["results"]
     assert results_b_self, "B 本人文档可检索命中"
-
-
-def test_public_delete_forbidden(
-    app_client: Any,
-    user_a: dict[str, Any],
-    public_docs: list[int],
-) -> None:
-    """公共库删除保护：任何用户删除公共文档 → 403 + code=1004。"""
-    public_id = public_docs[0]
-    resp = app_client.delete(
-        f"/api/v1/knowledge/items/{public_id}", headers=user_a["headers"]
-    )
-    assert resp.status_code == 403
-    assert resp.json()["code"] == 1004
-    detail = app_client.get(
-        f"/api/v1/knowledge/items/{public_id}", headers=user_a["headers"]
-    )
-    assert detail.status_code == 200, "公共文档删除被拒后仍可见"
-
-
-def test_public_reindex_allowed(
-    app_client: Any,
-    user_b: dict[str, Any],
-    public_docs: list[int],
-) -> None:
-    """公共文档允许重索引（spec 5.4.1 规则 3 裁决）：受理 parsing → 幂等重跑 indexed。"""
-    public_id = public_docs[0]
-    resp = app_client.post(
-        f"/api/v1/knowledge/items/{public_id}/reindex", headers=user_b["headers"]
-    )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["data"] == {"item_id": public_id, "status": "parsing"}
-    detail = app_client.get(
-        f"/api/v1/knowledge/items/{public_id}", headers=user_b["headers"]
-    )
-    data = detail.json()["data"]
-    assert data["status"] == "indexed"
-    assert data["chunk_count"] > 0
-    assert data["error_msg"] is None
 
 
 def test_reindex_rejected_while_pending_or_parsing(

@@ -1,8 +1,7 @@
-"""知识库文档路由（需登录；个人库仅本人可见，公共库全员可见）。
+"""知识库文档路由（需登录；个人库仅本人可见）。
 
-可见性规则（PROJECT_CONTEXT §6.9 双层知识库）：
-- ``scope=personal``（``user_id`` 为本人）：仅本人可见；
-- ``scope=public``（``user_id`` 为 NULL）：系统预置，所有登录用户可见。
+可见性规则（PROJECT_CONTEXT §6.9 知识库）：
+- ``scope=personal``（``user_id`` 为本人）：仅本人可见；公共库能力已移除。
 
 P8 扩展（design.md 2.2.1 接口总表）：在既有 2 个只读端点基础上
 追加 5 个端点（上传受理 / 删除 / 重索引 / 分块查看 / 语义检索），
@@ -11,7 +10,7 @@ P8 扩展（design.md 2.2.1 接口总表）：在既有 2 个只读端点基础�
 ``services/knowledge.py``。
 
 业务码映射总表见 design.md 2.7-A：2000 类型不支持 / 1001 大小
-超限 / 1004 公共文档保护 / 1005 不可见即不存在 / 1007 处理中拒绝
+超限 / 1005 不可见即不存在 / 1007 处理中拒绝
 / 3000 向量化不可用 / 3001 向量库失败。
 """
 
@@ -49,7 +48,7 @@ router: APIRouter = APIRouter(prefix="/knowledge", tags=["知识库"])
 
 
 def _visibility_filters(current_user: User) -> list[Any]:
-    """构造知识库可见性过滤条件：本人个人库 ∪ 全部公共库。
+    """构造知识库可见性过滤条件：仅本人个人库。
 
     薄委托 ``services/knowledge.visibility_filters``——写操作端点
     （删除/重索引/分块查看）与只读端点共用同一口径，「不可见即
@@ -59,13 +58,13 @@ def _visibility_filters(current_user: User) -> list[Any]:
     return visibility_filters(current_user.id)
 
 
-@router.get("/items", summary="知识库文档列表（分页，本人个人库 + 公共库）")
+@router.get("/items", summary="知识库文档列表（分页，仅本人个人库）")
 def list_knowledge_items(
     page_params: Annotated[PaginationParams, Query()],
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
-    """分页查询当前用户可见的知识库文档（本人个人库 + 全部公共库）。
+    """分页查询当前用户可见的知识库文档（仅本人个人库）。
 
     排序按 id 降序（P8 微调，design.md 2.9 决策 #13）：上传轮询
     场景下新上传文档立即可见置顶；响应结构与分页口径不变
@@ -100,7 +99,7 @@ def get_knowledge_item(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
-    """按 id 获取知识库文档详情（仅限本人个人库与公共库文档）。
+    """按 id 获取知识库文档详情（仅限本人个人库文档）。
 
     访问他人个人库文档与不存在统一返回 HTTP 404 + code=1005。
 
@@ -167,8 +166,8 @@ async def delete_knowledge_item(
 ) -> dict[str, Any]:
     """删除个人库文档：SQLite 同步级联删除，向量与原件异步清理。
 
-    业务码映射（design.md 2.7-A 场景 9/10）：公共文档 →
-    1004/403；不可见或不存在 → 1005/404（防 ID 枚举）。删除后
+    业务码映射（design.md 2.7-A 场景 9/10）：不可见或不存在 →
+    1005/404（防 ID 枚举）。删除后
     列表立即可见消失、检索不再命中（请求事务内完成 SQLite 删除）；
     向量库与原件清理经 background_tasks best-effort 执行。
 
@@ -201,8 +200,7 @@ async def reindex_knowledge_item(
 ) -> dict[str, Any]:
     """触发重新索引：清旧分块置 parsing，流水线幂等重跑。
 
-    可见文档（本人个人库 + 公共库）均可触发——**公共文档允许重
-    索引**（spec 5.4.1 规则 3 裁决口径）。业务码映射（design.md
+    本人个人库可见文档均可触发。业务码映射（design.md
     2.7-A 场景 11）：pending/parsing 状态 → 1007/400（封死「受理
     后任务尚未启动」的竞态窗口）；不可见或不存在 → 1005/404。
 
@@ -253,9 +251,9 @@ async def search_knowledge_endpoint(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
-    """语义检索：查询向量化 → 个人库+公共库合并排序。
+    """语义检索：查询向量化 → 本人个人库排序。
 
-    检索范围 = 与查询向量同空间的「本人个人库 + 全部公共库」；
+    检索范围 = 与查询向量同空间的本人个人库；
     响应含 mode 字段（online/offline，Embedding 可用性瞬时判定，
     不落库——offline 时前端渲染常驻警示条，design.md 2.6.2-D）。
     业务码映射（design.md 2.7-A 场景 12/13）：参数非法 → 1001/422

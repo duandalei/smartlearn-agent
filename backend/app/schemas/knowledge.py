@@ -73,7 +73,7 @@ class KnowledgeSearchHit(BaseModel):
         score: 相似度分数（1 - cosine 距离，降序，保留 4 位小数）。
         item_id: 来源文档 id（P9，跳转定位依据）。
         chunk_index: 来源分块序号（P9，高亮定位依据）。
-        scope: 归属作用域（P9，personal / public）。
+        scope: 归属作用域（当前恒为 personal）。
     """
 
     content: str

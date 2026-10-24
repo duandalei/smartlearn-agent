@@ -237,9 +237,8 @@ def test_prompt_knowledge_retrieval_rules(monkeypatch: pytest.MonkeyPatch) -> No
     prompt = _render(_create_user())
     anchors = [
         "先检索再回答",  # 规则 1
-        "未指明范围时默认检索全部",  # 规则 2
+        "知识库仅个人库",  # 规则 2
         "你的笔记里没有找到",  # 规则 3
-        "不得静默扩大",  # 规则 3
         "以检索内容为准",  # 规则 4
         "通用知识补充",  # 规则 5
         "不得调用 search_knowledge_base",  # 规则 6
@@ -251,8 +250,8 @@ def test_prompt_knowledge_retrieval_rules(monkeypatch: pytest.MonkeyPatch) -> No
         assert anchor in prompt, f"检索规则锚点缺失: {anchor}"
 
 
-def test_toolspec_search_scope_description() -> None:
-    """search_knowledge_base description 含 scope 默认口径（直读 TOOLS_SCHEMA，不经 LLM）。"""
+def test_toolspec_search_personal_only_description() -> None:
+    """search_knowledge_base description 说明个人库-only（直读 TOOLS_SCHEMA）。"""
     from app.agent.registry import TOOLS_SCHEMA
 
     descriptions = {
@@ -260,6 +259,6 @@ def test_toolspec_search_scope_description() -> None:
         for tool in TOOLS_SCHEMA
     }
     desc = descriptions["search_knowledge_base"]
-    assert "未指明范围一律用默认 all" in desc
+    assert "公共库已移除" in desc
     assert "personal" in desc
-    assert "public" in desc
+    assert "无 scope 参数" in desc

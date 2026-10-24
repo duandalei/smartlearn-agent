@@ -173,7 +173,7 @@ smartlearn/
 │   ├── smartlearn.db               # SQLite 数据库文件
 │   ├── chroma/                     # Chroma 本地持久化目录
 │   ├── uploads/                    # 用户上传的学习资料原件
-│   └── public_kb/                  # 公共知识库种子资料（预置 3-5 篇真实课程资料，随仓库分发）
+│   └── uploads/1/                  # demo 用户上传目录（含 4 篇随仓库分发的演示文件 1_*.md ~ 4_*.md）
 │
 ├── scripts/                        # 辅助脚本
 │   ├── init_data.py                # 演示数据重置脚本（P13 实现；建表与种子统一走 app/db/init_db.py）
@@ -407,29 +407,28 @@ smartlearn/
 | 字段 | 类型 | 可空 | 说明 |
 |---|---|---|---|
 | id | INTEGER | 否 | 主键 |
-| user_id | INTEGER | 是 | 外键 users.id；`scope=personal` 必填，`scope=public` 为 NULL |
+| user_id | INTEGER | 是 | 外键 users.id；文档归属用户（公共库已移除，历史库兼容保留可空） |
 | title | VARCHAR(200) | 否 | 文档标题 |
 | source_type | VARCHAR(20) | 否 | pdf/md/txt/docx/pptx/note |
 | file_path | VARCHAR(500) | 是 | 原始文件路径（note 类型可空） |
-| scope | VARCHAR(20) | 否 | personal/public，默认 personal（对应需求的双层知识库） |
+| scope | VARCHAR(20) | 否 | 固定 personal，默认 personal（公共库能力已移除） |
 | status | VARCHAR(20) | 否 | pending/parsing/indexed/failed，默认 pending |
 | error_msg | TEXT | 是 | 解析或向量化失败时的错误原因，`status=failed` 时必填 |
 | chunk_count | INTEGER | 否 | 切分后的分块数，默认 0 |
-| file_size | INTEGER | 是 | 原件字节数，列表展示文件大小用；上传受理时写入，存量公共文档由应用启动迁移回填 |
+| file_size | INTEGER | 是 | 原件字节数，列表展示文件大小用；上传受理时写入，存量文档由应用启动迁移回填 |
 | created_at | DATETIME | 否 | 创建时间 |
 | updated_at | DATETIME | 否 | 更新时间 |
 
-> **双层知识库可见性与归属（定稿）**：
-> - `scope=public`：**系统预置、只读**，学生不可新增/修改/删除；此类记录 `user_id` 为 `NULL`，检索时对所有用户可见。
-> - `scope=personal`：**学生上传一律为该值**，仅本人可见；列表、检索、删除均按 `user_id` 过滤。
-> - **种子数据要求**：必须在 `data/public_kb/` 预置 **3-5 篇真实课程资料**（如机器学习基础、线性代数要点、概率论公式表、数据结构速查），由 `scripts/init_data.py` 在初始化时导入并向量化；否则演示「个人库 / 公共库 / 两者结合」三档切换时公共库那档为空。
+> **知识库归属（定稿，公共库能力已移除）**：
+> - `scope=personal`：**唯一归属**，仅本人可见；列表、检索、删除均按 `user_id` 过滤。
+> - **演示数据要求**：`data/uploads/1/` 下随仓库分发 **4 篇真实课程资料**（`1_ml_basics.md` / `2_linear_algebra_notes.md` / `3_probability_formulas.md` / `4_ds_cheatsheet.md`），由 `backend/app/db/init_db.py` 在初始化时按普通上传建档到 demo 用户个人库并向量化；否则知识库检索与问答演示无内容可命中。重置脚本会保留这 4 个上传文件。
 
 ### 6.10 knowledge_chunks（知识分块）
 | 字段 | 类型 | 可空 | 说明 |
 |---|---|---|---|
 | id | INTEGER | 否 | 主键 |
 | item_id | INTEGER | 否 | 外键 knowledge_items.id |
-| user_id | INTEGER | 是 | 外键 users.id，冗余便于按用户过滤（public 可空） |
+| user_id | INTEGER | 是 | 外键 users.id，冗余便于按用户过滤 |
 | chunk_index | INTEGER | 否 | 分块序号，从 0 开始 |
 | content | TEXT | 否 | 分块文本内容 |
 | heading_path | TEXT | 是 | 分块所属标题路径（如「机器学习基础 > Transformer > 多头注意力」），用于检索结果定位到原文章节 |
@@ -521,7 +520,7 @@ smartlearn/
 | intent | VARCHAR(20) | 否 | 意图判断结果 knowledge/chat（chat=非知识型跳过检索）；与 is_grounded 双信号联合决定前端还原样式——knowledge 且 is_grounded=false → 无据警示，chat → 正常样式；不落库则两种 false 场景（没检索 vs 检索无果）无法区分，历史回放样式必错一边（P9 R3 新增） |
 | created_at | DATETIME | 否 | 提问时间 |
 
-> **设计意图**：RAG 学习问答（需求文档第 11 章，`/ask` 页）与 AI Agent（第 12 章，`/ai-agent` 页）是两个独立功能、各有用户可见的历史列表——`agent_messages` 是 Agent 会话的消息表，若复用承载 RAG 问答，用户在 AI Agent 页会看到「Transformer 的注意力机制」这类问答记录，两个功能的历史将混成一团。故 `qa_history` 独立建表；检索档位（personal/public/all）为当次请求参数，**不落库**。
+> **设计意图**：RAG 学习问答（需求文档第 11 章，`/ask` 页）与 AI Agent（第 12 章，`/ai-agent` 页）是两个独立功能、各有用户可见的历史列表——`agent_messages` 是 Agent 会话的消息表，若复用承载 RAG 问答，用户在 AI Agent 页会看到「Transformer 的注意力机制」这类问答记录，两个功能的历史将混成一团。故 `qa_history` 独立建表；检索范围（公共库移除后恒为当前用户个人库）为当次请求参数，**不落库**。
 > **`intent` 列补充说明（P9 R3）**：done 事件 data 契约为四字段 `{is_grounded, mode, intent, history_id}`——仅 `is_grounded` 无法区分「没检索（chat）」与「检索无果（knowledge 无据）」两种 `false` 场景，前端样式判定必须双信号联合；chat 与 knowledge 无据两种记录的其余字段完全同构（sources=[] + is_grounded=false），`intent` 不落库则历史回放无法区分，故新增本列。
 
 ---

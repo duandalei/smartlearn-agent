@@ -7,7 +7,7 @@
 api、不接收 Request/Response。
 
 主链路（design.md 2.1.3-A 活动图）：意图判断 →（knowledge）单次
-``search_knowledge``（scope 透传）→ 阈值过滤 → yield sources →
+``search_knowledge``（仅个人库）→ 阈值过滤 → yield sources →
 三模板组装 → ``llm.chat_stream`` 逐片 yield delta（**真实流式零
 缓冲，禁先算后发**）→ 落库（失败不抛穿，裁定③）→ yield done
 （四字段 data，裁决 #8 + 裁定①）。
@@ -93,13 +93,12 @@ async def qa_stream(
     db: Session,
     user_id: int,
     question: str,
-    scope: str,
 ) -> AsyncIterator[dict[str, Any]]:
     """SSE 问答编排生成器：产出事件 dict 流（非 SSE 文本）。
 
     编排顺序（design.md 2.1.3-A）：意图判断（异常退化为 knowledge）
     → chat 路径跳过检索 / knowledge 路径单次 ``search_knowledge``
-    （scope 原样透传，检索边界恒为当前认证 user_id）→ 阈值过滤 →
+    （检索边界恒为当前认证 user_id，仅个人库）→ 阈值过滤 →
     yield sources（恰 1 次）→ 三模板组装 → ``llm.chat_stream``
     逐片即时 yield delta → 落库（done 前一步，失败不抛穿）→
     yield done（四字段）。
@@ -115,7 +114,6 @@ async def qa_stream(
             流式期间会话有效）。
         user_id: 当前认证用户 id（检索与落库的隔离边界）。
         question: 用户问题（入参已校验非空 ≤500 字符）。
-        scope: 检索范围三档（personal / public / all，原样透传）。
 
     Yields:
         dict[str, Any]: SSE 事件 dict（sources / delta / done / error）。
@@ -138,22 +136,20 @@ async def qa_stream(
     if intent == "knowledge":
         try:
             result = await search_knowledge(
-                db, user_id, question, QA_TOP_K, scope
+                db, user_id, question, QA_TOP_K
             )
         except BizException as exc:
             logger.warning(
-                "qa_stream 检索失败: user_id=%s scope=%s code=%s",
+                "qa_stream 检索失败: user_id=%s code=%s",
                 user_id,
-                scope,
                 exc.code,
             )
             yield _error_event(exc.code, exc.message)
             return
         except Exception as exc:  # noqa: BLE001 - 未预期异常兜底
             logger.warning(
-                "qa_stream 检索未预期异常: user_id=%s scope=%s type=%s",
+                "qa_stream 检索未预期异常: user_id=%s type=%s",
                 user_id,
-                scope,
                 type(exc).__name__,
             )
             yield _error_event(CODE_INTERNAL_ERROR, "服务器内部错误")
@@ -177,9 +173,8 @@ async def qa_stream(
             yield _delta_event(chunk)
     except BizException as exc:
         logger.warning(
-            "qa_stream LLM 失败: user_id=%s scope=%s code=%s",
+            "qa_stream LLM 失败: user_id=%s code=%s",
             user_id,
-            scope,
             exc.code,
         )
         yield _error_event(exc.code, exc.message)
@@ -192,9 +187,8 @@ async def qa_stream(
             else "AI 服务暂时不可用，请稍后重试"
         )
         logger.warning(
-            "qa_stream LLM 流中断: user_id=%s scope=%s type=%s has_delta=%s",
+            "qa_stream LLM 流中断: user_id=%s type=%s has_delta=%s",
             user_id,
-            scope,
             type(exc).__name__,
             has_delta,
         )
@@ -223,10 +217,9 @@ async def qa_stream(
 
     elapsed = time.monotonic() - started_at
     logger.info(
-        "qa_stream 完成: user_id=%s scope=%s intent=%s is_grounded=%s "
+        "qa_stream 完成: user_id=%s intent=%s is_grounded=%s "
         "mode=%s delta片数=%s 耗时=%.2fs history_id=%s",
         user_id,
-        scope,
         intent,
         is_grounded,
         mode,

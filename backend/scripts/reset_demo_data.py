@@ -65,6 +65,15 @@ EXIT_CONFIG_FAILED = 7
 
 SQLITE_PREFIX = "sqlite:///"
 
+# demo 个人库的 4 篇演示上传文件（相对 UPLOAD_DIR）；重置时保留，
+# 其余上传内容照常清空。
+SEED_UPLOAD_REL_PATHS: tuple[str, ...] = (
+    "1/1_ml_basics.md",
+    "1/2_linear_algebra_notes.md",
+    "1/3_probability_formulas.md",
+    "1/4_ds_cheatsheet.md",
+)
+
 PROBE_SNIPPET = (
     "from app.core.config import settings;"
     "print('@@CFG@@');"
@@ -82,7 +91,8 @@ USAGE = """\
   -h, --help   显示本帮助并退出
 
 说明: 演示数据一键重置——备份并重建数据库、向量库与上传目录，
-      恢复为可演示的干净状态。绝不修改 .env 与 data/public_kb/。
+      恢复为可演示的干净状态。绝不修改 .env；demo 个人库的 4 篇
+      演示上传文件（data/uploads/1/1_*.md ~ 4_*.md）会被保留。
 """
 
 
@@ -221,7 +231,7 @@ def guard_occupancy(db_path: Path, port: int = BACKEND_PORT, skip_port: bool = F
 def confirm(cfg: Config, assume_yes: bool) -> None:
     if assume_yes:
         return
-    print("即将删除以下运行期数据（不影响 .env 与 data/public_kb/）:")
+    print("即将删除以下运行期数据（不影响 .env；4 篇演示上传文件保留）:")
     print(f"  数据库文件: {cfg.db_path}（含 -wal/-shm 伴随文件）")
     print(f"  向量库目录: {cfg.chroma_dir}")
     print(f"  上传目录:   {cfg.upload_dir}（目录内容清空，目录本身保留）")
@@ -279,19 +289,19 @@ def validate_protected_paths(cfg: Config) -> None:
     """路径安全守卫：运行期路径与受保护路径重叠即 exit 7（零写操作）。
 
     在 probe_config 之后、占用检测/确认/备份/删除之前执行；主链与
-    --verify-only 共用。防 .env 误配把 UPLOAD_DIR 指到 data/、项目根
-    或 data/public_kb 时 rmtree/遍历删除受保护内容（spec §4.3-1）。
+    --verify-only 共用。防 .env 误配把 UPLOAD_DIR 指到 data/ 或项目根
+    时 rmtree/遍历删除受保护内容（spec §4.3-1）。4 篇演示上传文件由
+    ``clean_runtime_data`` 显式保留，不依赖本守卫。
     """
     project_root = BACKEND_DIR.parent
     data_root = (project_root / "data").resolve()
-    public_kb = (data_root / "public_kb").resolve()
     env_files = {(project_root / ".env").resolve(), (BACKEND_DIR / ".env").resolve()}
     protected_dirs = {project_root.resolve(), BACKEND_DIR.resolve(), data_root}
     for label, p in (("数据库", cfg.db_path), ("向量库", cfg.chroma_dir), ("上传目录", cfg.upload_dir)):
         rp = p.resolve()
-        if rp in env_files or rp == public_kb or rp.is_relative_to(public_kb) or public_kb.is_relative_to(rp):
+        if rp in env_files:
             print(
-                f"配置安全校验失败: {label}路径 {rp} 与受保护路径（.env / data/public_kb）重叠，已拒绝执行，未做任何修改。",
+                f"配置安全校验失败: {label}路径 {rp} 与受保护路径（.env）重叠，已拒绝执行，未做任何修改。",
                 file=sys.stderr,
             )
             raise SystemExit(EXIT_CONFIG_FAILED)
@@ -315,11 +325,11 @@ def _rollback_hint(backup_dir: Path | None) -> str:
 def clean_runtime_data(cfg: Config, backup_dir: Path | None) -> None:
     """删除运行期数据：db 三文件 → chroma 整体 → uploads 内容（保留目录）。
 
-    删除前二次执行防线 2+3（跳过端口探测，收口 TOCTOU）；任一删除失败
-    即中止剩余删除，exit 4 并输出失败路径与回滚指引。删除集合仅由
-    validate_protected_paths 校验通过的 db/-wal/-shm、CHROMA_DIR、
-    UPLOAD_DIR 内容构成；受保护路径（.env / data/public_kb）由守卫
-    在删除前拦截，本函数不再重复校验。
+    uploads 内 4 篇演示种子文件（``SEED_UPLOAD_REL_PATHS``）保留，
+    它们就是 demo 用户的普通上传，重置后由 ``init_db`` 重新建档并
+    重索引；其余上传内容照常清空。删除前二次执行防线 2+3（跳过端口
+    探测，收口 TOCTOU）；任一删除失败即中止剩余删除，exit 4 并输出
+    失败路径与回滚指引。
     """
     guard_occupancy(cfg.db_path, skip_port=True)
     targets: list[tuple[str, Path]] = [
@@ -336,12 +346,26 @@ def clean_runtime_data(cfg: Config, backup_dir: Path | None) -> None:
             shutil.rmtree(cfg.chroma_dir)
             print(f"已删除向量库目录: {cfg.chroma_dir}")
         if cfg.upload_dir.exists():
+            seed_files = {
+                (cfg.upload_dir / rel).resolve()
+                for rel in SEED_UPLOAD_REL_PATHS
+            }
             for child in cfg.upload_dir.iterdir():
                 if child.is_dir():
-                    shutil.rmtree(child)
-                else:
+                    for sub in child.iterdir():
+                        if sub.resolve() in seed_files:
+                            continue
+                        if sub.is_dir():
+                            shutil.rmtree(sub)
+                        else:
+                            sub.unlink()
+                    if not any(child.iterdir()):
+                        child.rmdir()
+                elif child.resolve() not in seed_files:
                     child.unlink()
-            print(f"已清空上传目录内容: {cfg.upload_dir}")
+            print(
+                f"已清空上传目录内容（保留 4 篇演示文件）: {cfg.upload_dir}"
+            )
     except OSError as exc:
         print(
             f"删除失败: {exc.filename or ''} {exc}。已中止剩余删除步骤。",
@@ -401,7 +425,7 @@ def run_reindex_worker(cfg: Config) -> tuple[int, str]:
         print(proc.stderr, end="", file=sys.stderr)
     if proc.returncode != 0:
         print(
-            "重索引失败：存在失败篇目或公共文档数量异常（见上方 [FAIL] 行与数量提示）。",
+            "重索引失败：存在失败篇目或演示文档数量异常（见上方 [FAIL] 行与数量提示）。",
             file=sys.stderr,
         )
         return EXIT_REINDEX_FAILED, proc.stdout or ""
@@ -411,8 +435,9 @@ def run_reindex_worker(cfg: Config) -> tuple[int, str]:
 def _verify_rows(cfg: Config) -> tuple[int, list[str]]:
     """sqlite3 只读交叉验证（mode=ro URI，零写操作）。
 
-    返回 (退出码, 逐篇结果行)：数量恰为 4、每篇 status=indexed、
-    chunk_count>0 且等于 knowledge_chunks 实际行数；任一不满足返回 6。
+    返回 (退出码, 逐篇结果行)：demo 个人库数量恰为 4、每篇
+    status=indexed、chunk_count>0 且等于 knowledge_chunks 实际行数；
+    任一不满足返回 6。
     """
     if not cfg.db_path.exists():
         return EXIT_REINDEX_FAILED, [f"[FAIL] 数据库文件不存在: {cfg.db_path}"]
@@ -421,15 +446,22 @@ def _verify_rows(cfg: Config) -> tuple[int, list[str]]:
     except sqlite3.Error as exc:
         return EXIT_REINDEX_FAILED, [f"[FAIL] 数据库只读打开失败: {exc}"]
     try:
+        seed_paths = tuple(
+            f"data/uploads/{rel}" for rel in SEED_UPLOAD_REL_PATHS
+        )
+        placeholders = ",".join("?" for _ in seed_paths)
         rows = conn.execute(
             "SELECT id, title, status, chunk_count FROM knowledge_items "
-            "WHERE scope='public' ORDER BY id"
+            "WHERE scope='personal' AND user_id=("
+            "SELECT id FROM users WHERE username='demo') "
+            f"AND file_path IN ({placeholders}) ORDER BY id",
+            seed_paths,
         ).fetchall()
     except sqlite3.Error as exc:
         conn.close()
         return EXIT_REINDEX_FAILED, [f"[FAIL] 验证查询失败（库未初始化？）: {exc}"]
     if len(rows) != 4:
-        lines = [f"[FAIL] 公共文档数量恰为 4 的硬门禁不满足：实际 {len(rows)} 篇"]
+        lines = [f"[FAIL] 演示文档数量恰为 4 的硬门禁不满足：实际 {len(rows)} 篇"]
         lines += [f"  - {title}" for _, title, _, _ in rows]
         conn.close()
         return EXIT_REINDEX_FAILED, lines
@@ -464,26 +496,26 @@ def print_summary(cfg: Config, backup_line: str, item_lines: list[str]) -> None:
     print(f"数据库路径: {cfg.db_path}（已重建）")
     print("演示账号: demo / 123456（仅供开发演示，请勿用于生产环境）")
     print(f"备份目录: {backup_line}")
-    print("公共知识库（4 篇，真实索引）:")
+    print("演示知识库（demo 个人库 4 篇，真实索引）:")
     for line in item_lines:
         print(f"  {line}")
     print(
         "验证查询（可选）: cd backend && python -c \"import sqlite3;"
         "c=sqlite3.connect('../data/smartlearn.db');"
         "print(c.execute(\\\"select title,status,chunk_count from knowledge_items "
-        "where scope='public'\\\").fetchall())\""
+        "where scope='personal'\\\").fetchall())\""
     )
     print("下一步: 启动后端与前端（start.bat / bash start.sh），以 demo / 123456 登录")
     print("==================================================")
 
 
 async def _worker_reindex() -> int:
-    """worker 子命令：4 篇公共文档真实重索引（函数体内才 import app.*）。"""
+    """worker 子命令：demo 个人库 4 篇演示文档真实重索引（函数体内才 import app.*）。"""
     from sqlalchemy import func, select
 
     from app.core.response import BizException
     from app.db.session import SessionLocal
-    from app.models.enums import KnowledgeItemStatus, KnowledgeScope
+    from app.models.enums import KnowledgeItemStatus
     from app.models.knowledge import KnowledgeChunk, KnowledgeItem
     from app.models.user import User
     from app.rag.embedding import embed_query_with_fallback
@@ -494,15 +526,21 @@ async def _worker_reindex() -> int:
         if demo_id is None:
             print("[FAIL] 未找到 demo 用户（初始化子进程未成功执行？）", file=sys.stderr)
             return 1
+        # 只认 4 篇演示上传文件，demo 用户自己上传的其它文档不参与
+        # 重置重索引，也不影响 4 篇硬门禁。
+        seed_paths = [
+            f"data/uploads/{rel}" for rel in SEED_UPLOAD_REL_PATHS
+        ]
         rows = db0.execute(
             select(KnowledgeItem.id, KnowledgeItem.title)
-            .where(KnowledgeItem.scope == KnowledgeScope.PUBLIC)
+            .where(KnowledgeItem.user_id == demo_id)
+            .where(KnowledgeItem.file_path.in_(seed_paths))
             .order_by(KnowledgeItem.id)
         ).all()
     items = [(row[0], row[1]) for row in rows]
     if len(items) != 4:
         print(
-            f"[FAIL] 公共文档数量恰为 4 的硬门禁不满足：实际 {len(items)} 篇",
+            f"[FAIL] 演示文档数量恰为 4 的硬门禁不满足：实际 {len(items)} 篇",
             file=sys.stderr,
         )
         for _, title in items:

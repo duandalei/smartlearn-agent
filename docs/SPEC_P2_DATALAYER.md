@@ -1,5 +1,7 @@
 # P2「数据层实现」需求规格（SPEC_P2_DATALAYER）
 
+> **变更说明（2026-10-25，公共库能力已移除）**：`knowledge_items.scope` 现恒为 personal，公共库种子移除；演示语料改为 `data/uploads/1/` 下的 4 篇普通上传文件，并写入 demo 用户个人库。下文涉及 public 归属的历史规格条目仅作演进记录。
+
 | 项目 | 内容 |
 |---|---|
 | 所属项目 | 彭城智学 SmartLearn Agent |

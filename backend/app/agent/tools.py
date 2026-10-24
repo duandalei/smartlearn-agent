@@ -474,10 +474,6 @@ class SearchKnowledgeBaseParams(BaseModel):
         le=20,
         description="期望返回条数（可选，1–20，默认 5）",
     )
-    scope: Literal["personal", "public", "all"] = Field(
-        default="all",
-        description="检索范围（可选：personal 仅个人库 / public 仅公共库 / all 两者合并，默认 all）",
-    )
 
 
 class CreateTaskParams(BaseModel):
@@ -655,9 +651,9 @@ async def get_learning_statistics(
 async def search_knowledge_base(
     db: Session, user_id: int, params: SearchKnowledgeBaseParams
 ) -> ToolResult:
-    """在个人 / 公共知识库中语义检索（P9 search_knowledge 直传直返）。"""
+    """在个人知识库中语义检索（公共库已移除）。"""
     return await search_knowledge(
-        db, user_id, params.query, params.top_k, params.scope
+        db, user_id, params.query, params.top_k
     )
 
 

@@ -61,7 +61,7 @@ async def chat_qa(
     检索边界（spec 4.3 规则 2）。
 
     Args:
-        payload: 请求体（question + scope，Pydantic 校验）。
+        payload: 请求体（question；公共库已移除，无 scope）。
         db: 数据库会话（依赖注入；qa_stream 生成器持有请求级会话）。
         current_user: 当前登录用户（依赖注入）。
 
@@ -69,7 +69,7 @@ async def chat_qa(
         StreamingResponse: ``text/event-stream`` 流式响应
         （``Cache-Control: no-cache``，spec 4.3 规则 5）。
     """
-    events = qa_stream(db, current_user.id, payload.question, payload.scope)
+    events = qa_stream(db, current_user.id, payload.question)
 
     async def _sse_format(
         event_stream: AsyncIterator[dict[str, Any]],

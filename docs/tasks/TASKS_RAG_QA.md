@@ -1,5 +1,7 @@
 # RAG AI 学习问答（rag_qa）编码任务规划
 
+> **变更说明（2026-10-25，公共库能力已移除）**：scope 三档与公共库检索相关任务已失效；问答检索恒为当前用户个人库。下文相关条目仅作历史记录。
+
 > feature: `rag_qa` ｜ 阶段：编码任务规划（spec-task-agent 产出）
 > 上游输入：`docs/specs/SPEC_RAG_QA.md`（R3 定稿，14 项裁决 + D1–D9 验收标准）、`docs/designs/DESIGN_RAG_QA.md`（R3 定稿，设计决策 D1–D10 + 三项开放决策点已裁定）、`docs/PROJECT_CONTEXT.md`（§6.16 qa_history 九字段 / §2 RAG_MIN_SCORE / §7.1–7.2 路由与接口均已同步）
 > 生成日期：2026-10-21 ｜ 状态：待用户确认

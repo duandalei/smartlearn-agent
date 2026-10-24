@@ -58,7 +58,7 @@ smartlearn/
 │   │   └── views/          # 各页面（骨架占位）
 │   ├── .env.development
 │   └── vite.config.ts
-├── data/                   # 运行时数据（不进版本库；public_kb 除外）
+├── data/                   # 运行时数据（不进版本库；4 篇演示上传文件除外）
 ├── docs/                   # 项目文档
 ├── start.sh / start.bat    # 一键启动（先后端后前端）
 └── README.md
@@ -125,7 +125,7 @@ bash start.sh
 
 ## 五之二、演示数据一键重置
 
-把运行环境恢复成「可演示的干净状态」（删除并重建 SQLite 库、向量库与上传目录，重建种子数据并对 4 篇公共知识库文档执行真实重新索引）：
+把运行环境恢复成「可演示的干净状态」（删除并重建 SQLite 库、向量库与上传目录，重建种子数据并对 demo 个人库中的 4 篇演示文档执行真实重新索引）：
 
 ```bash
 # 先停止后端，再执行：
@@ -140,7 +140,16 @@ python scripts/reset_demo_data.py --yes
 - `--yes`：跳过交互确认直接执行（不豁免占用检测与配置校验）；
 - `--no-backup`：跳过备份步骤（默认会把数据库备份到 `data/_reset_backup/<YYYYmmdd-HHMMSS>/`，摘要会打印该路径）；
 - 检测到后端仍在运行/数据库被占用时会直接退出并提示「请先停止后端再重置」，不会杀进程；
-- 重复执行幂等，第二次不会报错；`.env` 与 `data/public_kb/` 永不被修改。
+- 重复执行幂等，第二次不会报错；`.env` 永不被修改，`data/uploads/1/` 下的 4 篇演示上传文件会被保留。
+
+**从旧版本升级（存量库仍有公共库文档）**：公共库能力已移除，旧库中的 `scope=public` 文档在新口径下不可见。先停止后端，执行一次性迁移把 4 篇演示文档转入 demo 个人库并重建向量（脚本自动备份数据库）：
+
+```bash
+cd backend
+.venv/Scripts/python scripts/migrate_public_to_personal.py --yes
+```
+
+也可以直接执行上面的「演示数据一键重置」重建全新演示库。
 
 **预期摘要样例**（真实输出，分块数以实际切分为准）：
 
@@ -149,7 +158,7 @@ python scripts/reset_demo_data.py --yes
 数据库路径: .../data/smartlearn.db（已重建）
 演示账号: demo / 123456（仅供开发演示，请勿用于生产环境）
 备份目录: .../data/_reset_backup/20261024-182015
-公共知识库（4 篇，真实索引）:
+演示知识库（demo 个人库 4 篇，真实索引）:
   [OK] 机器学习核心概念速览 — 8 chunks
   [OK] 线性代数要点笔记：特征值与矩阵分解 — 8 chunks
   [OK] 概率论与数理统计公式表 — 8 chunks
@@ -159,7 +168,7 @@ python scripts/reset_demo_data.py --yes
 退出码: 0
 ```
 
-**公共知识库索引确认**：启动后登录 `demo / 123456`，左侧菜单「知识库」可见 4 篇公共文档且状态为已索引；或调用 `GET /api/v1/knowledge/items` 按 `scope=public` 过滤核对为 4 条、`chunk_count > 0`。
+**演示知识库索引确认**：启动后登录 `demo / 123456`，左侧菜单「知识库」可见 4 篇演示文档（归属 demo 个人库）且状态为已索引；或调用 `GET /api/v1/knowledge/items` 核对 4 篇种子文档均在且 `chunk_count > 0`。
 
 **常见启动失败处理**：
 
@@ -188,7 +197,7 @@ python scripts/reset_demo_data.py --yes
    ```
 2. **前端**：访问 http://localhost:5173，自动跳转 `/login`；以演示账号 `demo / 123456` 登录（重置后种子自带）进入主布局，左侧菜单可切换各页面。
 3. **统一错误提示**：后端未启动时，前端操作会通过统一拦截器弹出「网络异常，请稍后重试」而非白屏。
-4. **后端自动化测试**：`cd backend && pytest -q`（当前基线 206 passed）。
+4. **后端自动化测试**：`cd backend && pytest -q`（当前基线 202 passed）。
 5. **前端构建**：`cd frontend && npm run build`（vue-tsc + vite，应 exit 0）。
 6. **演示走查**：按 `docs/DEMO_SCRIPT.md` 的 5 分钟版分镜实际走一遍（前置检查 → 五幕 → 收尾幕）。
 
@@ -214,14 +223,14 @@ python scripts/reset_demo_data.py --yes
 
 ## 十、数据集与开源组件说明
 
-**数据集**：本项目**未使用任何外部受限数据集**。`data/public_kb/` 下 4 篇文档为课程笔记型自编材料（Markdown），仅用于知识库检索与 RAG 问答演示：
+**数据集**：本项目**未使用任何外部受限数据集**。`data/uploads/1/` 下 4 篇演示上传文件为课程笔记型自编材料（Markdown），作为 demo 用户的普通上传文件，仅用于知识库检索与 RAG 问答演示：
 
 | 文件 | 标题 | 用途 |
 |---|---|---|
-| `ml_basics.md` | 机器学习核心概念速览 | 公共知识库种子 / 演示检索语料 |
-| `linear_algebra_notes.md` | 线性代数要点笔记：特征值与矩阵分解 | 同上 |
-| `probability_formulas.md` | 概率论与数理统计公式表 | 同上 |
-| `ds_cheatsheet.md` | 数据结构常见考点速查 | 同上 |
+| `1_ml_basics.md` | 机器学习核心概念速览 | 演示上传 / 检索语料 |
+| `2_linear_algebra_notes.md` | 线性代数要点笔记：特征值与矩阵分解 | 同上 |
+| `3_probability_formulas.md` | 概率论与数理统计公式表 | 同上 |
+| `4_ds_cheatsheet.md` | 数据结构常见考点速查 | 同上 |
 
 **主要开源组件**（与 `backend/requirements.txt`、`frontend/package.json` 实际依赖一致）：
 
@@ -241,6 +250,6 @@ python scripts/reset_demo_data.py --yes
 1. **需求环节**：以码道生成各阶段需求规格文档（`docs/specs/`），把口头需求落成可验收的条目（规则 + 验收条件 + 异常场景），例如动态计划调整规则、演示重置流程的边界定义；
 2. **设计环节**：由码道产出技术设计文档（`docs/designs/`），包括进程模型裁决（如重置脚本的父子双进程模型）、接口契约与退出码表、风险清单，设计先行的习惯避免了多轮返工；
 3. **编码环节**：按任务清单（`docs/tasks/`）分批由码道生成与修订代码，前后端契约（响应体、字段命名、SSE 协议）由文档链保持一致；
-4. **测试辅助环节**：码道协助编写与修复后端 pytest 用例（当前 206 passed），并对失败用例做根因定位（如测试库隔离、日期敏感用例）；前端 W1–W12 走查由浏览器自动化完成（本机 Chrome 驱动），码道负责按走查结果修复问题。
+4. **测试辅助环节**：码道协助编写与修复后端 pytest 用例（当前 202 passed），并对失败用例做根因定位（如测试库隔离、日期敏感用例）；前端 W1–W12 走查由浏览器自动化完成（本机 Chrome 驱动），码道负责按走查结果修复问题。
 
 相关文档链：`docs/specs/`（规格）→ `docs/designs/`（设计）→ `docs/tasks/`（任务）→ `docs/WALKTHROUGH_PLAN_REPORT_FRONTEND.md`（走查记录），可作为码道协作过程的追溯材料。
