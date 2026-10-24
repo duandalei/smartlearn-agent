@@ -13,6 +13,7 @@
 import { ElMessage } from 'element-plus'
 
 import type { Report } from '@/types/report'
+import MarkdownText from '@/components/common/MarkdownText.vue'
 import { formatMinutes } from '@/utils/record'
 import {
   downloadReportMarkdown,
@@ -56,7 +57,9 @@ function handleExport(): void {
     </div>
 
     <!-- ② 摘要引用块（空则省略） -->
-    <blockquote v-if="report.summary" class="summary">{{ report.summary }}</blockquote>
+    <blockquote v-if="report.summary" class="summary">
+      <MarkdownText :content="report.summary" />
+    </blockquote>
 
     <!-- ③ 七要素分区（有则显示、无则隐藏该分区；content=null 整块不渲染） -->
     <template v-if="report.content">

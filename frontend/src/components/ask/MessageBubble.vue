@@ -24,6 +24,7 @@
 import { computed } from 'vue'
 
 import SourceCard from '@/components/ask/SourceCard.vue'
+import MarkdownText from '@/components/common/MarkdownText.vue'
 import type { AskMessage, QaSourceItem } from '@/types'
 
 const props = defineProps<{
@@ -82,7 +83,8 @@ const bubbleClass = computed(() => ({
       />
 
       <div class="content">
-        {{ props.message.content }}<span v-if="props.message.streaming" class="cursor" />
+        <MarkdownText :content="props.message.content" />
+        <span v-if="props.message.streaming" class="cursor" />
       </div>
 
       <!-- 流中断（无 done）：错误提示，已生成内容保留 -->

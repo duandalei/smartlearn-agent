@@ -25,6 +25,7 @@
 import { computed, ref } from 'vue'
 
 import { searchKnowledge } from '@/api/knowledge'
+import MarkdownText from '@/components/common/MarkdownText.vue'
 import type { KnowledgeSearchHit } from '@/types'
 
 const query = ref('')
@@ -91,7 +92,9 @@ function fmtScore(score: number): string {
             <span class="hit-source">{{ hit.source_title }}</span>
             <span class="hit-score">相似度 {{ fmtScore(hit.score) }}</span>
           </div>
-          <p class="hit-content">{{ hit.content }}</p>
+          <div class="hit-content">
+            <MarkdownText :content="hit.content" />
+          </div>
         </div>
       </template>
       <el-empty v-else description="未命中相关内容" :image-size="80" />
@@ -158,7 +161,6 @@ function fmtScore(score: number): string {
   margin: 0;
   font-size: 13px;
   line-height: 1.7;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 .search-hint {

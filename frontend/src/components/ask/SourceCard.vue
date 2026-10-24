@@ -14,6 +14,7 @@
 import { computed, ref } from 'vue'
 
 import type { QaSourceItem } from '@/types'
+import { renderInlineMarkdown } from '@/utils/markdown'
 
 const props = defineProps<{
   /** 来源条目（sources 事件 / 历史快照同构）。 */
@@ -63,7 +64,7 @@ function onCardClick(): void {
       </el-tag>
     </div>
     <p class="source-content" :class="{ collapsed: !expanded }">
-      {{ props.source.content }}
+      <span v-html="renderInlineMarkdown(props.source.content)" />
     </p>
     <div class="source-foot">
       <span class="source-score">相似度 {{ fmtScore }}</span>

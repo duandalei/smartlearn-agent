@@ -17,6 +17,7 @@ import { InfoFilled, VideoPause } from '@element-plus/icons-vue'
 
 import KnowledgeSources from '@/components/agent/KnowledgeSources.vue'
 import ToolCallCard from '@/components/agent/ToolCallCard.vue'
+import MarkdownText from '@/components/common/MarkdownText.vue'
 import type { QaSourceItem } from '@/types'
 import type { AgentFinishReason, ViewMessage } from '@/types/agent'
 
@@ -125,7 +126,8 @@ function thinkingLabel(round: number | null): string {
         />
         <!-- 文本段（中间轮解释与最终回答分属不同段） -->
         <div v-else class="content">
-          {{ segment.content }}<span
+          <MarkdownText :content="segment.content" />
+          <span
             v-if="assistant.streaming && idx === lastTextIdx"
             class="cursor"
           />

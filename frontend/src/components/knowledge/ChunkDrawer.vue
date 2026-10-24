@@ -12,6 +12,7 @@
 import { nextTick, ref, watch } from 'vue'
 
 import { listKnowledgeChunks } from '@/api/knowledge'
+import MarkdownText from '@/components/common/MarkdownText.vue'
 import type { KnowledgeChunk, KnowledgeItem } from '@/types'
 
 const props = defineProps<{
@@ -29,6 +30,8 @@ const emit = defineEmits<{
 
 const chunks = ref<KnowledgeChunk[]>([])
 const loading = ref(false)
+/** 源码/渲染切换：默认渲染 Markdown；需要核对原始切分时切到源码。 */
+const showRaw = ref(false)
 
 /** 高亮分块卡片的 DOM 引用（scrollIntoView 定位）。 */
 let highlightEl: HTMLElement | null = null
@@ -76,10 +79,22 @@ function close(): void {
 <template>
   <el-drawer
     :model-value="props.modelValue"
-    :title="props.item ? `分块预览：${props.item.title}` : '分块预览'"
     size="480px"
     @update:model-value="close"
   >
+    <template #header>
+      <div class="drawer-head">
+        <span class="drawer-title">
+          {{ props.item ? `分块预览：${props.item.title}` : '分块预览' }}
+        </span>
+        <el-switch
+          v-model="showRaw"
+          size="small"
+          active-text="源码"
+          inactive-text="渲染"
+        />
+      </div>
+    </template>
     <div v-loading="loading" class="chunk-list">
       <div
         v-for="chunk in chunks"
@@ -92,7 +107,8 @@ function close(): void {
           <el-tag size="small" type="info" effect="plain">#{{ chunk.chunk_index }}</el-tag>
           <span v-if="chunk.heading_path" class="chunk-path">{{ chunk.heading_path }}</span>
         </div>
-        <p class="chunk-content">{{ chunk.content }}</p>
+        <MarkdownText v-if="!showRaw" :content="chunk.content" class="chunk-content" />
+        <div v-else class="chunk-content raw">{{ chunk.content }}</div>
       </div>
       <el-empty
         v-if="!loading && chunks.length === 0"
@@ -130,11 +146,30 @@ function close(): void {
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+.drawer-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
 .chunk-content {
   margin: 0;
   font-size: 13px;
   line-height: 1.7;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+.chunk-content.raw {
+  padding: 8px;
+  border-radius: 4px;
+  background: var(--el-fill-color-light);
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 </style>

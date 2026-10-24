@@ -26,16 +26,15 @@ const userStore = useUserStore()
 
 const menus: MenuItem[] = [
   { index: '/dashboard', title: '学习中心', icon: 'Odometer' },
-  { index: '/profile', title: '学习档案', icon: 'User' },
   { index: '/goals', title: '学习目标', icon: 'Aim' },
   { index: '/plans', title: '学习计划', icon: 'Calendar' },
   { index: '/tasks', title: '学习任务', icon: 'List' },
   { index: '/learning-records', title: '学习记录', icon: 'Notebook' },
   { index: '/knowledge-base', title: '知识库', icon: 'Collection' },
-
   { index: '/ai-agent', title: 'AI 助手', icon: 'ChatDotRound' },
   { index: '/reports', title: '成长报告', icon: 'DataAnalysis' },
-  // 设置页暂未实现：菜单先隐藏；以后接入时恢复此项与 router 的 /settings 路由
+  // 学习档案为低频账号入口，沉底；设置页暂未实现，菜单先隐藏
+  { index: '/profile', title: '学习档案', icon: 'User' },
 ]
 
 /** 当前高亮菜单项 = 当前路由路径 */
