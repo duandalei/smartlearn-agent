@@ -83,10 +83,10 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '成长报告', needsAuth: true },
       },
       {
+        // 设置页暂未实现：菜单已隐藏，直接访问重定向到学习中心；
+        // 以后接入时改回 component: () => import('@/views/SettingsView.vue')
         path: 'settings',
-        name: 'settings',
-        component: () => import('@/views/SettingsView.vue'),
-        meta: { title: '设置', needsAuth: true },
+        redirect: '/dashboard',
       },
     ],
   },

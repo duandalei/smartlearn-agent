@@ -129,7 +129,7 @@ export function toEChartsTree(node: RoadmapNode, depth = 1): EChartsTreeNode {
   return {
     name: node.name,
     collapsed: depth > 1,
-    children: node.children.map((c) => toEChartsTree(c, depth + 1)),
+    children: (node.children ?? []).map((c) => toEChartsTree(c, depth + 1)),
   }
 }
 

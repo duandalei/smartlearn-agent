@@ -206,10 +206,15 @@ def _insert_week_plan(
     uid: int,
     items_spec: list[dict[str, Any]],
     capacity_day_offset: tuple[date, date] | None = None,
+    include_rest: bool = True,
 ) -> int:
     """直插本周 active 计划（精确控制条目布局；返回 plan_id）。
 
     items_spec 每条：{date, start, end, topic, task_id, estimated, priority, status}
+
+    include_rest=False 时不插入周五休息条目——用于「全部 done 无可调整项」
+    类断言（A4）：休息条目 status=planned，周五过后会命中「未完成
+    （plan_date < 今天）∧ 时长不足」进入移动集，使结果随运行日期漂移。
     """
     from app.models.enums import PlanItemStatus, PlanSource, PlanStatus, Priority
     from app.models.plan import LearningPlan, LearningPlanItem
@@ -238,14 +243,15 @@ def _insert_week_plan(
                     status=PlanItemStatus(spec.get("status", "planned")),
                 )
             )
-        # 周五休息条目
-        db.add(
-            LearningPlanItem(
-                plan_id=plan.id, plan_date=monday + timedelta(days=4),
-                start_time=None, end_time=None, topic="休息 / 复习",
-                task_id=None, estimated_minutes=None, priority=None,
+        # 周五休息条目（include_rest=False 时跳过——见 docstring）
+        if include_rest:
+            db.add(
+                LearningPlanItem(
+                    plan_id=plan.id, plan_date=monday + timedelta(days=4),
+                    start_time=None, end_time=None, topic="休息 / 复习",
+                    task_id=None, estimated_minutes=None, priority=None,
+                )
             )
-        )
         db.commit()
         return plan.id
 
@@ -434,6 +440,7 @@ def test_a4_nothing_to_adjust(
             {"date": monday, "start": time(19, 0), "end": time(20, 0), "topic": "已完成项",
              "task_id": None, "estimated": 60, "priority": "medium", "status": "done"}
         ],
+        include_rest=False,  # 只有 done 条目：休息条目周五过后会误入移动集
     )
     resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
     assert resp.status_code == 200, resp.text

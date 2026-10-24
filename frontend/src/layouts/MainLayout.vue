@@ -35,7 +35,7 @@ const menus: MenuItem[] = [
   { index: '/ask', title: 'AI 问答', icon: 'ChatLineRound' },
   { index: '/ai-agent', title: 'AI 助手', icon: 'ChatDotRound' },
   { index: '/reports', title: '成长报告', icon: 'DataAnalysis' },
-  { index: '/settings', title: '设置', icon: 'Setting' },
+  // 设置页暂未实现：菜单先隐藏；以后接入时恢复此项与 router 的 /settings 路由
 ]
 
 /** 当前高亮菜单项 = 当前路由路径 */

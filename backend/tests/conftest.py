@@ -36,6 +36,10 @@ import pytest
 _TEST_ROOT = Path(tempfile.mkdtemp(prefix="kb_pytest_"))
 os.environ["DATABASE_URL"] = f"sqlite:///{(_TEST_ROOT / 'test.db').as_posix()}"
 
+# 注（P13）：scripts/test_tools.py 的收集排除由 scripts/conftest.py 的
+# collect_ignore 承担——目录级 conftest 的 pytest_ignore_collect 仅对
+# 本目录树生效，对本文件的决策须由 scripts/ 自己的 conftest 作出。
+
 # 沙箱 IPv6 socketpair 补丁：按文件路径加载（不依赖包结构）。
 _SANDBOX_PATCH = Path(__file__).resolve().parent.parent / "scripts" / "_sandbox_patch.py"
 if _SANDBOX_PATCH.is_file():
