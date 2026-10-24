@@ -12,6 +12,7 @@
  */
 import { nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
 
 import AgentComposer from '@/components/agent/AgentComposer.vue'
 import ConversationList from '@/components/agent/ConversationList.vue'
@@ -24,6 +25,7 @@ import {
   renameAgentConversation,
   streamAgentChat,
 } from '@/api/agent'
+import type { QaSourceItem } from '@/types'
 import type {
   AgentConversation,
   AgentMessage,
@@ -58,6 +60,78 @@ const GENERATING_BLOCK_HINT = '请先停止当前生成'
 /** 列表超出首屏时底部提示（O4——不做加载更多）。 */
 const LIST_TOTAL_HINT = `仅显示最近 ${CONVERSATION_PAGE_SIZE} 条会话`
 
+/** 来源条数上限（与后端 core.py SOURCES_MAX_COUNT 同名同值——L2）。 */
+const SOURCES_MAX_COUNT = 20
+
+/** 来源单条片段截断长度（与后端 SOURCE_CONTENT_MAX_LEN 同名同值）。 */
+const SOURCE_CONTENT_MAX_LEN = 240
+
+/** 空态知识库轻提示（spec §5.2.1-6——L2 agent_absorb_ask）。 */
+const KNOWLEDGE_HINT =
+  '可以直接问知识库——我会自动检索你的笔记和公共资料，并在回答下方标注来源'
+
+// ---------------------------------------------------------------------------
+// 来源规范化与块级合并（L2 agent_absorb_ask，design 2.1.3-C）
+// 实时 SSE（已截断）与历史回放（完整 JSON）两路径共用 normalizeSources
+// 单一口径——再过一遍是幂等，保证实时/历史一致（spec §4.2 规则 2）。
+// ---------------------------------------------------------------------------
+/** 来源去重键（'x' 占位区分 null 与数值 0——脏防御）。 */
+function sourceDedupKey(s: QaSourceItem): string {
+  return `${s.item_id ?? 'x'}:${s.chunk_index ?? 'x'}`
+}
+
+/**
+ * 单一口径规范化（纯函数零副作用）：六字段白名单——content/title 缺失
+ * 整条丢弃、存在则强制 String()；scope 仅认 personal/public；score 强制
+ * Number()（NaN 置 0）；item_id/chunk_index 可空但非空须为数（否则置
+ * null 降级）；content 截 240；按 (item_id, chunk_index) 去重；≤20；
+ * 全坏返回 []。
+ */
+function normalizeSources(raw: unknown): QaSourceItem[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Map<string, QaSourceItem>()
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) continue
+    const rec = item as Record<string, unknown>
+    if (rec.content == null || rec.source_title == null) continue
+    if (rec.scope !== 'personal' && rec.scope !== 'public') continue
+    const score = Number(rec.score)
+    const normalized: QaSourceItem = {
+      source_title: String(rec.source_title),
+      content: String(rec.content).slice(0, SOURCE_CONTENT_MAX_LEN),
+      score: Number.isNaN(score) ? 0 : score,
+      item_id: typeof rec.item_id === 'number' ? rec.item_id : null,
+      chunk_index: typeof rec.chunk_index === 'number' ? rec.chunk_index : null,
+      scope: rec.scope,
+    }
+    const key = sourceDedupKey(normalized)
+    if (seen.has(key)) continue
+    seen.set(key, normalized)
+    if (seen.size >= SOURCES_MAX_COUNT) break
+  }
+  return [...seen.values()]
+}
+
+/**
+ * 块级保序去重合并：首现位次保留（对齐 SourceCard 编号连续惯例，去重
+ * 仅针对多次检索的重复命中——spec §6.3-6）；合并后超 20 截断。
+ */
+function mergeAssistantSources(
+  block: AssistantViewMessage,
+  incoming: QaSourceItem[],
+): void {
+  if (!incoming.length) return
+  const seen = new Map<string, QaSourceItem>()
+  for (const s of block.sources) seen.set(sourceDedupKey(s), s)
+  for (const s of incoming) {
+    const key = sourceDedupKey(s)
+    if (seen.has(key)) continue
+    seen.set(key, s)
+    if (seen.size >= SOURCES_MAX_COUNT) break
+  }
+  block.sources = [...seen.values()]
+}
+
 // ---------------------------------------------------------------------------
 // 响应式状态域（design 2.4.4-A）
 // ---------------------------------------------------------------------------
@@ -76,6 +150,9 @@ let loadSeq = 0
 /** 滚动跟随开关（autoFollow 滞回——决策 A5）。 */
 const autoFollow = ref(true)
 const scroller = ref<HTMLElement | null>(null)
+
+/** 路由实例（L2：来源卡跳转 /knowledge-base 使用）。 */
+const router = useRouter()
 
 /** 对话流滚动跟随（P9 scrollToBottom 复刻）。 */
 async function scrollToBottom(): Promise<void> {
@@ -106,6 +183,7 @@ function placeholderAssistant(): AssistantViewMessage {
     finish: null,
     error: null,
     stopped: false,
+    sources: [],
   }
 }
 
@@ -180,7 +258,10 @@ async function onSend(message: string): Promise<void> {
         },
         onToolResult: (data) => {
           // 按 call_id 配对写入；未命中降级为独立完成态卡片（spec
-          // §5.3.1 规则 8）。
+          // §5.3.1 规则 8）。sources 三态（L2）：undefined → null
+          // （非检索/失败路径零行为变化）；[] → 空命中；[...] → 命中。
+          const normalized =
+            data.sources !== undefined ? normalizeSources(data.sources) : null
           let hit = false
           for (const segment of assistant.segments) {
             if (segment.kind === 'tool' && segment.call.call_id === data.call_id) {
@@ -190,6 +271,7 @@ async function onSend(message: string): Promise<void> {
                 summary: data.summary,
                 truncated: data.truncated,
                 raw_content: null,
+                sources: normalized,
               }
               hit = true
               break
@@ -208,10 +290,14 @@ async function onSend(message: string): Promise<void> {
                   summary: data.summary,
                   truncated: data.truncated,
                   raw_content: null,
+                  sources: normalized,
                 },
               },
             })
           }
+          // 块级合并：实时路径当前 assistant 即本轮消息，直接聚合——
+          // 来源区渲染在 segments 之后（spec §5.2.1-7）。
+          if (normalized) mergeAssistantSources(assistant, normalized)
           if (autoFollow.value) void scrollToBottom()
         },
         onDelta: (text) => {
@@ -300,9 +386,21 @@ async function bindConversationAfterDone(conversationId: number): Promise<void> 
 function buildViewMessages(msgs: AgentMessage[]): ViewMessage[] {
   const result: ViewMessage[] = []
   const cardIndex = new Map<string, ToolCallView>()
+  // 轮次 flush 游标（L2 修正①，design 2.1.3-C）：来源挂到「本轮最终
+  // 回答」块而非拥有工具调用的块——user 分支前置 flush + 循环末尾
+  // 终态 flush；不引入块级索引，纯局部变量增量。
+  let pendingSources: QaSourceItem[] = []
+  let lastAssistant: AssistantViewMessage | null = null
+  const flushPendingSources = (): void => {
+    if (pendingSources.length && lastAssistant) {
+      mergeAssistantSources(lastAssistant, pendingSources)
+    }
+    pendingSources = []
+  }
 
   for (const msg of msgs) {
     if (msg.role === 'user') {
+      flushPendingSources()
       result.push({ kind: 'user', content: msg.content })
       continue
     }
@@ -314,6 +412,7 @@ function buildViewMessages(msgs: AgentMessage[]): ViewMessage[] {
         finish: null,
         error: null,
         stopped: false,
+        sources: [],
       }
       if (msg.content) block.segments.push({ kind: 'text', content: msg.content })
       if (msg.tool_calls && msg.tool_calls.length) {
@@ -329,6 +428,9 @@ function buildViewMessages(msgs: AgentMessage[]): ViewMessage[] {
         }
       }
       result.push(block)
+      // 同轮多块（工具调用块/最终回答块）时后者覆盖前者——游标始终
+      // 指向「当前轮最后一个 assistant 块」。
+      lastAssistant = block
       continue
     }
     // role === 'tool'：按 tool_call_id 回填（未命中即孤儿——跳过）。
@@ -363,14 +465,45 @@ function buildViewMessages(msgs: AgentMessage[]): ViewMessage[] {
       truncated: false,
       // 历史回放展开详情 = 完整结果 JSON 格式化（ToolCallCard 数据驱动切换）。
       raw_content: msg.content,
+      // 检索来源默认 null（历史缺源语义）；仅检索工具成功且 results
+      // 为数组时在下方追加段重建覆盖。
+      sources: null,
+    }
+    // 检索来源重建（L2 历史路径）：卡片级可溯写入 + 块级暂存（不立
+    // 即挂块，flush 时挂到本轮最终回答）；parse 失败 / error 信封 /
+    // results 非数组 → 保持 null 且不并入（降级不崩，spec §5.2.3-1）。
+    if (msg.tool_name === 'search_knowledge_base' && parseOk && !isFailed) {
+      const results = (parsed as { results?: unknown }).results
+      if (Array.isArray(results)) {
+        const normalized = normalizeSources(results)
+        card.result.sources = normalized
+        pendingSources = pendingSources.concat(normalized)
+      }
     }
   }
+  // 终态 flush：覆盖最后一轮无后继 user 消息的收尾场景。
+  flushPendingSources()
   return result
 }
 
+/** 来源卡跳转（L2：与 AskView.onNavigate 同构口径——item_id 缺失
+ * 守卫 return；query 携带 item_id 字符串化 + chunk_index 可空省略）。
+ * SourceCard canNavigate 已前置拦截，此处双保险。 */
+function onSourceNavigate(source: QaSourceItem): void {
+  if (source.item_id == null) return
+  void router.push({
+    path: '/knowledge-base',
+    query: {
+      item_id: String(source.item_id),
+      ...(source.chunk_index != null
+        ? { chunk_index: String(source.chunk_index) }
+        : {}),
+    },
+  })
+}
+
 /** arguments 容错解析（三分支——失败降级原始字符串）。 */
-function parseArgumentsSafe(raw: string): Record<string, unknown> | string {
-  if (!raw) return {}
+function parseArgumentsSafe(raw: string): Record<string, unknown> | string {  if (!raw) return {}
   try {
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
@@ -552,6 +685,7 @@ onMounted(() => {
             description="向 AI 助手提问，它会自动调用工具分析你的学习数据"
             :image-size="90"
           />
+          <p class="kb-hint">{{ KNOWLEDGE_HINT }}</p>
           <div class="quick-questions">
             <el-button
               v-for="question in QUICK_QUESTIONS"
@@ -571,6 +705,7 @@ onMounted(() => {
             :key="idx"
             :message="message"
             @card-toggle="onCardToggle"
+            @source-navigate="onSourceNavigate"
           />
         </div>
       </div>
@@ -642,6 +777,11 @@ onMounted(() => {
   align-items: center;
   gap: 16px;
   padding-top: 40px;
+}
+.kb-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
 }
 .quick-questions {
   display: flex;

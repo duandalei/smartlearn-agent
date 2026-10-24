@@ -14,6 +14,8 @@
  *   A3——实时/历史差异全收敛为可空字段，组件无模式分支）。
  */
 
+import type { QaSourceItem } from '@/types'
+
 // ---------------------------------------------------------------------------
 // 传输层：SSE 六事件契约（spec §7.2 七条载荷约束）
 // ---------------------------------------------------------------------------
@@ -33,7 +35,7 @@ export interface AgentToolCallData {
   arguments: Record<string, unknown>
 }
 
-/** tool_result 事件载荷（耗时 + ≤500 字摘要 + 截断标记）。 */
+/** tool_result 事件载荷（耗时 + ≤500 字摘要 + 截断标记 + 可选来源）。 */
 export interface AgentToolResultData {
   call_id: string
   name: string
@@ -41,6 +43,11 @@ export interface AgentToolResultData {
   elapsed_ms: number
   summary: string
   truncated: boolean
+  /**
+   * 检索来源（L2 agent_absorb_ask）：仅 search_knowledge_base 出现；
+   * 缺省（undefined）= 非检索工具/检索失败；[] = 检索成功空命中。
+   */
+  sources?: QaSourceItem[]
 }
 
 /** done 事件载荷（五字段；finish_reason 真实反映结束原因）。 */
@@ -144,6 +151,8 @@ export interface ToolResultView {
   truncated: boolean
   /** 历史回放展开详情（完整结果 JSON 字符串）；实时为 null。 */
   raw_content: string | null
+  /** 该次检索来源（卡片级可溯）；null = 非检索/失败/历史缺源。 */
+  sources: QaSourceItem[] | null
 }
 
 /** thinking 轮次信号段（done=true 即该轮弱化——决策 A11）。 */
@@ -191,6 +200,11 @@ export interface AssistantViewMessage {
   finish: FinishInfo | null
   error: string | null
   stopped: boolean
+  /**
+   * 块级聚合来源（L2：多次检索按 (item_id, chunk_index) 保序去重、
+   * ≤20；创建点恒初始化 []，杜绝 undefined——空数组 = 无来源区）。
+   */
+  sources: QaSourceItem[]
 }
 
 /** 视图消息联合。 */

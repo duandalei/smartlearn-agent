@@ -370,12 +370,18 @@ def test_a1_version_chain_and_reason(
 
 
 def test_a2_diff_consistency_with_endpoint(
-    app_client: Any, user_a: dict[str, Any], llm_all_dead: None
+    app_client: Any, user_a: dict[str, Any], llm_all_dead: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """D4：调整随返 diff == diff 端点重算（幂等一致性——同函数构造性结果）。"""
     _set_profile(app_client, user_a, 90)
     uid = _get_user_id(app_client, user_a)
-    now = datetime.now(TZ)
+    # 固定在本周周四中午：本周仍有未来时段，避免周日运行时本周已无
+    # 未来日期导致 moved 变 removed 的日期敏感。
+    fixed_now = datetime.combine(
+        _this_monday() + timedelta(days=3), time(12, 0)
+    ).replace(tzinfo=TZ)
+    monkeypatch.setattr("app.services.plan._beijing_now", lambda: fixed_now)
+    now = fixed_now
     monday = _this_monday()
     task_id = _create_task(app_client, user_a, "临期测验复习", now + timedelta(hours=20), "high")
     _insert_records(uid, 540)
@@ -509,12 +515,17 @@ def test_a5_done_preserved(
 
 
 def test_a6_postpone_scenario(
-    app_client: Any, user_a: dict[str, Any], llm_all_dead: None
+    app_client: Any, user_a: dict[str, Any], llm_all_dead: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A6：周六容量不足 → 顺延周六 low 条目到周日（moved diff 含牺牲条目）。"""
     _set_profile(app_client, user_a, 120)
     uid = _get_user_id(app_client, user_a)
-    now = datetime.now(TZ)
+    # 与 A2 同因：固定本周周四中午，保证周六/周日仍在未来。
+    fixed_now = datetime.combine(
+        _this_monday() + timedelta(days=3), time(12, 0)
+    ).replace(tzinfo=TZ)
+    monkeypatch.setattr("app.services.plan._beijing_now", lambda: fixed_now)
+    now = fixed_now
     monday = _this_monday()
     saturday, sunday = monday + timedelta(days=5), monday + timedelta(days=6)
     urgent = _create_task(app_client, user_a, "紧急专项", now + timedelta(hours=12), "high")

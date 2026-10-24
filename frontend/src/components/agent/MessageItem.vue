@@ -15,7 +15,9 @@
 import { computed } from 'vue'
 import { InfoFilled, VideoPause } from '@element-plus/icons-vue'
 
+import KnowledgeSources from '@/components/agent/KnowledgeSources.vue'
 import ToolCallCard from '@/components/agent/ToolCallCard.vue'
+import type { QaSourceItem } from '@/types'
 import type { AgentFinishReason, ViewMessage } from '@/types/agent'
 
 /** finish_reason 三态收尾文案（spec §7.4 规则 3——渲染宿主即单一来源；normal 静默）。 */
@@ -38,6 +40,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'card-toggle', callId: string, expanded: boolean): void
+  /** 来源卡点击上抛（L2；组件自身不持 router，父级统一跳转）。 */
+  (e: 'source-navigate', source: QaSourceItem): void
 }>()
 
 /** assistant 分支窄化（模板类型收窄辅助）。 */
@@ -61,6 +65,26 @@ const finishHint = computed((): string => {
   const finish = assistant.value?.finish
   if (!finish) return ''
   return FINISH_HINTS[finish.finish_reason]
+})
+
+/** 回答实际引用的来源序号（[1][2]...；来源卡只展示被引用的条目——
+ * 检索命中但未被引用的噪声留在工具卡中审计，避免“没找到却出现
+ * 一堆无关来源卡”的误导）。 */
+const citedIndices = computed((): number[] => {
+  const block = assistant.value
+  if (!block) return []
+  const text = block.segments
+    .filter((segment) => segment.kind === 'text')
+    .map((segment) => segment.content)
+    .join('\n')
+  const indices = new Set<number>()
+  const re = /\[(\d+)\]/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(text)) !== null) {
+    const index = Number(match[1])
+    if (Number.isInteger(index) && index > 0) indices.add(index)
+  }
+  return [...indices]
 })
 
 /** O8 统计小字：「N 轮 · M 次工具调用」（小号灰字、无 badge、恒显）。 */
@@ -107,6 +131,16 @@ function thinkingLabel(round: number | null): string {
           />
         </div>
       </template>
+
+      <!-- 来源区（L2，spec §5.2.1-7：严格位于 segments 之后、
+           finishHint 之前；空集合/失败/历史缺源时 sources 为 []
+           不渲染——spec §5.2.1-4） -->
+      <KnowledgeSources
+        v-if="assistant.sources.length"
+        :sources="assistant.sources"
+        :cited-indices="citedIndices"
+        @navigate="(s) => emit('source-navigate', s)"
+      />
 
       <!-- 块末固定区：收尾提示 → 统计小字 → 错误行 / 已停止 -->
       <div v-if="finishHint" class="finish-hint">

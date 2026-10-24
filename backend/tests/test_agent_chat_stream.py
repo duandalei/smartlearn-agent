@@ -823,3 +823,148 @@ def test_context_size_not_in_sse(
     payload = json.dumps(events, ensure_ascii=False)
     assert "agent_context_size" not in payload
     assert "chars" not in payload
+
+# ---------------------------------------------------------------------------
+# 8.x tool_result sources 扩展（L2 agent_absorb_ask，design 2.1.3-B）
+# monkeypatch 口径（tasks 2.3 修订）：patch app.agent.tools 模块全局
+# search_knowledge（TOOL_MAP 在 registry，tools.py 内不存在 TOOL_MAP）——
+# 真实 search_knowledge_base 包装函数（tool_endpoint 参数校验链路保留）
+# 经模块全局 search_knowledge 返回假数据。
+# ---------------------------------------------------------------------------
+def _search_hit(idx: int, content_len: int = 30) -> dict[str, Any]:
+    """构造一条合法六字段检索命中（content 长度由 content_len 控制）。"""
+    return {
+        "content": f"第{idx}条命中片段" + "文" * content_len,
+        "source_title": f"线性代数要点笔记 » 第{idx}章",
+        "score": round(0.9 - idx * 0.01, 4),
+        "item_id": idx + 1,
+        "chunk_index": idx,
+        "scope": "personal" if idx % 2 else "public",
+    }
+
+
+def _install_fake_search(monkeypatch: pytest.MonkeyPatch, payload: Any) -> None:
+    """patch app.agent.tools.search_knowledge 模块全局返回假检索结果。
+
+    payload 为 Exception 实例时抛出（走 tool_endpoint → error 信封真实
+    链路）；否则原样返回（如 {mode, results}）。
+    """
+
+    async def fake_search(*args: Any, **kwargs: Any) -> Any:
+        if isinstance(payload, Exception):
+            raise payload
+        return payload
+
+    monkeypatch.setattr("app.agent.tools.search_knowledge", fake_search)
+
+
+def _search_script(
+    args: dict[str, Any] | None = None,
+) -> list[list[dict[str, Any]]]:
+    """轮 1 单次 search_knowledge_base 调用 → 轮 2 文本收尾。"""
+    return [
+        [
+            _round(
+                [
+                    _tc(
+                        "call_1",
+                        "search_knowledge_base",
+                        args or {"query": "特征值分解"},
+                    )
+                ]
+            )
+        ],
+        [{"content": "根据检索到的内容作答。"}, _round([], "stop")],
+    ]
+
+
+def _sole_tool_result(events: list[dict[str, Any]]) -> dict[str, Any]:
+    results = [e["data"] for e in events if e["type"] == "tool_result"]
+    assert len(results) == 1, f"tool_result 数异常: {len(results)}"
+    return results[0]
+
+
+_SOURCE_KEYS = {"source_title", "content", "score", "item_id", "chunk_index", "scope"}
+_LEGACY_KEYS = {"call_id", "name", "ok", "elapsed_ms", "summary", "truncated"}
+
+
+def test_search_sources_hit(
+    app_client: Any,
+    user_a: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """命中：tool_result 含 sources 键、2 条六字段齐、content ≤240、六旧字段仍在。"""
+    _install_fake_llm(monkeypatch, _search_script())
+    _install_fake_search(
+        monkeypatch,
+        {"mode": "online", "results": [_search_hit(1), _search_hit(2)]},
+    )
+    events = _events_of(app_client, user_a, "我的笔记里特征值分解在 PCA 里起什么作用？")
+    r = _sole_tool_result(events)
+    assert r["ok"] is True
+    assert r["name"] == "search_knowledge_base"
+    assert _LEGACY_KEYS <= set(r.keys())
+    sources = r["sources"]
+    assert len(sources) == 2
+    for s in sources:
+        assert set(s.keys()) == _SOURCE_KEYS
+        assert len(s["content"]) <= 240
+        assert s["scope"] in ("personal", "public")
+        assert isinstance(s["score"], float)
+
+
+def test_search_sources_empty_hit(
+    app_client: Any,
+    user_a: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """空命中：results=[] → sources 键存在且 == []、ok True（查过没查到）。"""
+    _install_fake_llm(monkeypatch, _search_script())
+    _install_fake_search(monkeypatch, {"mode": "online", "results": []})
+    events = _events_of(app_client, user_a, "什么是量子纠缠")
+    r = _sole_tool_result(events)
+    assert r["ok"] is True
+    assert "sources" in r
+    assert r["sources"] == []
+
+
+def test_search_sources_failure(
+    app_client: Any,
+    user_a: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """检索失败：error 信封 → tool_result 无 sources 键、ok False（禁伪造）。"""
+    from app.core.response import CODE_VECTOR_FAILED, BizException
+
+    _install_fake_llm(monkeypatch, _search_script())
+    _install_fake_search(
+        monkeypatch, BizException(CODE_VECTOR_FAILED, "知识库检索暂不可用")
+    )
+    events = _events_of(app_client, user_a, "我的笔记里特征值分解怎么写的？")
+    r = _sole_tool_result(events)
+    assert r["ok"] is False
+    assert "sources" not in r
+    assert set(r.keys()) == _LEGACY_KEYS
+
+
+def test_search_sources_truncation_and_limit(
+    app_client: Any,
+    user_a: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """截断限量：25 条 × 300+ 字 → sources 恰 20 条、每条 content ≤240。"""
+    _install_fake_llm(monkeypatch, _search_script())
+    payload = {
+        "mode": "online",
+        "results": [_search_hit(i, content_len=300) for i in range(25)],
+    }
+    _install_fake_search(monkeypatch, payload)
+    events = _events_of(app_client, user_a, "Transformer 的注意力机制是什么？")
+    r = _sole_tool_result(events)
+    assert r["ok"] is True
+    sources = r["sources"]
+    assert len(sources) == 20
+    for s in sources:
+        assert len(s["content"]) <= 240
+        assert set(s.keys()) == _SOURCE_KEYS
+        assert s["scope"] in ("personal", "public")

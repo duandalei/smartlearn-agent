@@ -64,6 +64,18 @@ MAX_TOKENS: int = 2048
 #: tool_result 摘要截断长度（字符，序列化后计；任务书 SSE 契约）。
 SUMMARY_TRUNCATE: int = 500
 
+#: 知识库检索工具名（tool_result 携带 sources 的唯一门控工具——其余
+#: 工具恒走 None 路径，六字段键集合逐字节不变，spec §4.5 规则 1）。
+SEARCH_TOOL_NAME: str = "search_knowledge_base"
+
+#: sources 单条片段截断长度（字符；20×240≈6KB 控制 SSE 单事件体积，
+#: spec §4.1 规则 1）。
+SOURCE_CONTENT_MAX_LEN: int = 240
+
+#: sources 条数上限（与 SearchKnowledgeBaseParams top_k 上限一致，
+#: spec §4.1 规则 2）。
+SOURCES_MAX_COUNT: int = 20
+
 #: 多轮上下文窗口条数。O7 裁定：最近 20 条，成对边界截断禁孤儿
 #: tool 消息。
 CONTEXT_WINDOW: int = 20
@@ -143,19 +155,26 @@ def _tool_result_event(
     elapsed_ms: int,
     summary: str,
     truncated: bool,
+    sources: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """构造 tool_result 事件（六字段：耗时与 ≤500 字摘要，SSE 契约）。"""
-    return {
-        "type": EVENT_TOOL_RESULT,
-        "data": {
-            "call_id": call_id,
-            "name": name,
-            "ok": ok,
-            "elapsed_ms": elapsed_ms,
-            "summary": summary,
-            "truncated": truncated,
-        },
+    """构造 tool_result 事件（六字段 SSE 契约 + 可选第 7 字段 sources）。
+
+    ``sources`` 仅 ``SEARCH_TOOL_NAME`` 检索路径由 ``_extract_sources``
+    产出：``None`` → 键不出现（既有六字段名称/语义/序位逐字节兼容）；
+    非 None（含 ``[]`` 空命中）→ ``data["sources"] = sources``
+    （spec §6.3 规则 2/3：空命中键在值空，失败键不出现）。
+    """
+    data: dict[str, Any] = {
+        "call_id": call_id,
+        "name": name,
+        "ok": ok,
+        "elapsed_ms": elapsed_ms,
+        "summary": summary,
+        "truncated": truncated,
     }
+    if sources is not None:
+        data["sources"] = sources
+    return {"type": EVENT_TOOL_RESULT, "data": data}
 
 
 def _delta_event(text: str) -> dict[str, Any]:
@@ -233,6 +252,74 @@ def _summarize_result(result: dict[str, Any]) -> tuple[str, bool]:
     if len(text) > SUMMARY_TRUNCATE:
         return text[:SUMMARY_TRUNCATE], True
     return text, False
+
+
+def _extract_sources(result: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """从 search_knowledge_base 完整结果提取 SSE 来源载荷（真值表锁定）。
+
+    真值表（design 2.1.3-B / spec §6.3 规则 1/2/3）：
+
+    - 非 dict 或含 ``error`` 键 → ``None``（检索失败，sources 键不出现，
+      禁止伪造来源）；
+    - ``results`` 缺失或非 list → ``None``（结构异常视为失败）；
+    - ``results == []`` → ``[]``（检索成功空命中，键在值为空数组）；
+    - 正常命中 → 六字段白名单（content/source_title/score/item_id/
+      chunk_index/scope）逐条提取：``content``/``source_title`` 非 str、
+      ``scope`` 不在 {personal, public} 的脏条目整条丢弃；``content``
+      超 ``SOURCE_CONTENT_MAX_LEN`` 截断；``score`` 非数值置 0.0、
+      ``item_id``/``chunk_index`` 非 int 置 None（可空字段降级，与前端
+      normalizeSources 口径一致保证实时/历史一致）；总量超
+      ``SOURCES_MAX_COUNT`` 截前 N 条。``mode`` 不进 sources（瞬时
+      降级信号，对齐 knowledge.py「mode 不落库」口径）。
+    """
+    if not isinstance(result, dict) or "error" in result:
+        return None
+    results = result.get("results")
+    if not isinstance(results, list):
+        return None
+    if not results:
+        return []
+    sources: list[dict[str, Any]] = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content")
+        title = item.get("source_title")
+        scope = item.get("scope")
+        if not isinstance(content, str) or not isinstance(title, str):
+            continue
+        if scope not in ("personal", "public"):
+            continue
+        score = item.get("score")
+        item_id = item.get("item_id")
+        chunk_index = item.get("chunk_index")
+        sources.append(
+            {
+                "source_title": title,
+                "content": content[:SOURCE_CONTENT_MAX_LEN],
+                "score": (
+                    float(score)
+                    if isinstance(score, (int, float))
+                    and not isinstance(score, bool)
+                    else 0.0
+                ),
+                "item_id": (
+                    item_id
+                    if isinstance(item_id, int) and not isinstance(item_id, bool)
+                    else None
+                ),
+                "chunk_index": (
+                    chunk_index
+                    if isinstance(chunk_index, int)
+                    and not isinstance(chunk_index, bool)
+                    else None
+                ),
+                "scope": scope,
+            }
+        )
+        if len(sources) >= SOURCES_MAX_COUNT:
+            break
+    return sources
 
 
 def _build_template_summary(collected: list[dict[str, str]]) -> str:
@@ -535,8 +622,13 @@ async def agent_chat_stream(
 
             ok = isinstance(result, dict) and "error" not in result
             summary, truncated = _summarize_result(result)
+            # sources 仅此一处接线（design 2.1.3-B）：仅检索工具提取，
+            # 其余工具 None → 键不出现；主循环其余控制流零改动。
+            sources = (
+                _extract_sources(result) if name == SEARCH_TOOL_NAME else None
+            )
             yield _tool_result_event(
-                call_id, name, ok, elapsed_ms, summary, truncated
+                call_id, name, ok, elapsed_ms, summary, truncated, sources
             )
             executed_calls.append(tc)
             round_results.append(

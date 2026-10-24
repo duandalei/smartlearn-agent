@@ -588,6 +588,7 @@ class "SSE 事件载荷 (core.py 构造)" as sse {
   thinking : {round, content?}
   tool_call : {call_id, name, arguments}
   tool_result : {call_id, name, ok, elapsed_ms, summary, truncated}
+  note : L2 起 tool_result 可选增 sources（仅 search_knowledge_base，\n键可缺席；详见 DESIGN_AGENT_ABSORB_ASK §2.1.3-B）
   delta : str
   done : {conversation_id, message_id, rounds, tool_call_count, finish_reason}
   error : {code, message}

@@ -227,3 +227,39 @@ def test_prompt_single_source_of_prompt() -> None:
     assert [str(p) for p in hits] == [
         str(_BACKEND_APP / "agent" / "prompts.py")
     ]
+
+# ---------------------------------------------------------------------------
+# 6.3 知识库检索规则与 ToolSpec 口径（L2 agent_absorb_ask，spec §5.1.1）
+# ---------------------------------------------------------------------------
+def test_prompt_knowledge_retrieval_rules(monkeypatch: pytest.MonkeyPatch) -> None:
+    """知识型问题检索作答 8 条规则锚点逐一在 prompt（spec §5.1.1-1..8）。"""
+    _install(monkeypatch, profile=_PROFILE_FIXTURE, statistics=_STATISTICS_FIXTURE)
+    prompt = _render(_create_user())
+    anchors = [
+        "先检索再回答",  # 规则 1
+        "未指明范围时默认检索全部",  # 规则 2
+        "你的笔记里没有找到",  # 规则 3
+        "不得静默扩大",  # 规则 3
+        "以检索内容为准",  # 规则 4
+        "通用知识补充",  # 规则 5
+        "不得调用 search_knowledge_base",  # 规则 6
+        "没有找到相关记录",  # 规则 7
+        "暂时无法读取笔记或资料",  # 规则 8
+        "禁止伪造来源",  # 规则 8
+    ]
+    for anchor in anchors:
+        assert anchor in prompt, f"检索规则锚点缺失: {anchor}"
+
+
+def test_toolspec_search_scope_description() -> None:
+    """search_knowledge_base description 含 scope 默认口径（直读 TOOLS_SCHEMA，不经 LLM）。"""
+    from app.agent.registry import TOOLS_SCHEMA
+
+    descriptions = {
+        str(tool["function"]["name"]): str(tool["function"]["description"])
+        for tool in TOOLS_SCHEMA
+    }
+    desc = descriptions["search_knowledge_base"]
+    assert "未指明范围一律用默认 all" in desc
+    assert "personal" in desc
+    assert "public" in desc

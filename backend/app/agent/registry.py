@@ -228,6 +228,10 @@ _TOOL_SPECS: list[ToolSpec] = [
             "（片段正文）、source_title（来源标题»章节路径）、score（相似度"
             "分数）、item_id（来源文档 id）、chunk_index（分块序号）、scope"
             "（该条归属 personal/public）。无命中返回空 results，不是错误。"
+            "scope 填法：用户说「我的笔记/我上传的/资料里/文档里」用 "
+            "personal；明确说「公共资料/公共课程资料」用 public；未指明范围"
+            "一律用默认 all（即使问题像公共概念）；用户限定 personal 无命中"
+            "时直接据实回答，不得自行改用 public/all 重试。"
         ),
     ),
     ToolSpec(

@@ -65,10 +65,10 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '知识库', needsAuth: true },
       },
       {
+        // AI 问答入口已收敛至 AI 助手；AskView.vue 与 /chat/qa 链路
+        // 完整保留作回退，仅不再路由可达（L2 agent_absorb_ask）
         path: 'ask',
-        name: 'ask',
-        component: () => import('@/views/AskView.vue'),
-        meta: { title: 'AI 问答', needsAuth: true },
+        redirect: '/ai-agent',
       },
       {
         path: 'ai-agent',
