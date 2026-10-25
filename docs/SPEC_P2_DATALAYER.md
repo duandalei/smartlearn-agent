@@ -331,7 +331,7 @@ pool --> caller : 可用 Session
 1. **首次执行建库建种**：When 开发者执行 `python -m app.db.init_db` 且数据库中无 `users` 表, the 数据层 shall 创建全部 15 张表并写入下表全部种子数据，生成 `data/smartlearn.db`。
    a. 验收条件：命令执行后 `data/smartlearn.db` 存在，各表条数符合 5.4.1 条 3 的统计表。
 2. **重复执行幂等**：When 开发者重复执行 `python -m app.db.init_db` 且演示用户 `demo` 已存在, the 数据层 shall 跳过全部种子插入、不报错、以退出码 0 结束，且所有表条数保持不变。
-   a. 验收条件：连续执行两次后 `users` 仍为 1 行、`tasks` 仍为 20 行、`learning_records` 仍为 30 行（全表核对见第 8 章 B 表）。
+   a. 验收条件：连续执行两次后 `users` 仍为 1 行、`tasks` 仍为 22 行、`learning_records` 仍为 30 行（全表核对见第 8 章 B 表）。
 3. **种子数据统计（量化契约）**：The 数据层 shall 写入以下种子数据：
 
    | 表 | 条数 | 关键要求 |
@@ -342,7 +342,7 @@ pool --> caller : 可用 Session
    | learning_goals | 5 | 含「掌握机器学习」主线目标（`roadmap` 为 3~4 层知识树 JSON）；status 覆盖 active（≥3）/ completed（≥1）/ archived（≥1） |
    | learning_plans | 1 | `active`、`version=1`、`source=agent`、起止日期覆盖执行日所在周 |
    | learning_plan_items | 7~10 | 属上述计划；`plan_date` 为本周日期、含明确 `start_time`/`end_time`（联合唯一不冲突）；topic 与任务知识点呼应（如「线性代数：特征值」） |
-   | tasks | 20 | 四种 status 各 ≥1（建议 todo 7 / in_progress 4 / done 7 / review 2）；deadline 有近有远且 ≥3 个已逾期（早于执行日）；priority 三档各 ≥1；source 覆盖 manual 与 agent；`knowledge_points` 为真实知识点数组 |
+   | tasks | 22 | 四种 status 各 ≥1（建议 todo 7 / in_progress 4 / done 9 / review 2）；deadline 有近有远且 ≥3 个已逾期（早于执行日）；priority 三档各 ≥1；source 覆盖 manual 与 agent；`knowledge_points` 为真实知识点数组；除「休息 / 复习」外的计划条目均有关联任务 |
    | learning_records | 30 | `study_date` 为执行日前 30 天连续逐日；`duration_minutes` 每天 30~180（0.5~3 小时）；覆盖 Python / 机器学习 / 数学 / 算法四类知识点；**最近 5 天时长严格递减**（由远及近逐日减少，用于演示学习风险预警）；`mastery_level` 取 0–100 |
    | knowledge_items | 3~5 | 全部 `scope=public`、`user_id=NULL`、`status=indexed`；主题如机器学习基础 / 线性代数要点 / 概率论公式表 / 数据结构速查；`source_type` 覆盖 ≥3 种 |
    | knowledge_chunks | 3~5 | 为其中 ≥1 篇文档的预置分块（真实文本内容、`chunk_index` 从 0 递增）；`embedding_id=NULL`（本阶段不向量化，RAG 阶段回填）；对应文档 `chunk_count` 与实际分块数一致 |

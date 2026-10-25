@@ -530,10 +530,11 @@ def _seed_tasks(
     today: date,
     now: datetime,
 ) -> dict[str, Task]:
-    """写入 20 个学习任务（todo 7 / in_progress 4 / done 7 / review 2）。
+    """写入 22 个学习任务（todo 7 / in_progress 4 / done 9 / review 2）。
 
     含 3 个已逾期未完成任务（#2/-1、#18/-3、#20/-5），用于 P12
-    计划调整演示。
+    计划调整演示。t21/t22 专为本周计划前两条学习排期补建，保证除
+    「休息 / 复习」外每条计划条目都有可完成的任务实体。
 
     Args:
         db: 数据库会话。
@@ -623,6 +624,14 @@ def _seed_tasks(
         ("t20", "背诵英语四级高频词汇 List 12", "todo", "low",
          "manual", None, None, -5, ["英语词汇"], 30, None,
          "四级虽已通过，继续保持每日词汇量练习"),
+        # 以下两条对应本周计划周一 / 周三的学习排期：截止时间随执行日
+        # 动态落在对应 plan_date 上（周一 = today - weekday，周三 +2 天）
+        ("t21", "推导特征值与特征向量的几何意义", "done", "medium",
+         "manual", "g1", "c1", -today.weekday(), ["线性代数", "特征值与特征向量"],
+         90, 85, "对照西瓜书 3.2 节推导特征值定义，完成 3 道手算例题并理解几何意义"),
+        ("t22", "复习 Python 迭代器与生成器", "done", "low",
+         "manual", None, "c2", 2 - today.weekday(), ["迭代器", "生成器", "Python"],
+         90, 80, "手写实现迭代器协议与生成器表达式，对比 list 与生成器的内存占用"),
     ]
     tasks: dict[str, Task] = {}
     for key, title, status, priority, source, goal_key, course_key, dl_off, kps, est, actual, desc in rows:
@@ -692,11 +701,11 @@ def _seed_plan(
     # (相对周一偏移, 开始, 结束, 主题, 任务, 预计分钟, 优先级)
     items: list[tuple[int, time, time, str, str | None, int | None, str]] = [
         (0, time(19, 0), time(20, 30), "线性代数：特征值与特征向量",
-         None, 90, "medium"),
+         "t21", 90, "medium"),
         (1, time(19, 0), time(20, 30), "机器学习：SVM 对偶问题与 KKT 推导",
          "t2", 90, "high"),
         (2, time(19, 30), time(21, 0), "Python：迭代器与生成器",
-         None, 90, "low"),
+         "t22", 90, "low"),
         (3, time(19, 0), time(20, 0), "机器学习：Transformer Self-Attention 精读",
          "t1", 60, "high"),
         (4, time(19, 0), time(19, 45), "数据结构：哈希表与 LRU 缓存",
@@ -726,8 +735,8 @@ def _seed_plan(
                 ),
             )
         )
-    # 5 个被计划条目引用的任务补写 scheduled_date（Agent 生成计划时写入）。
-    scheduled_map = {"t2": 1, "t1": 3, "t9": 4, "t18": 4, "t3": 5}
+    # 7 个被计划条目引用的任务补写 scheduled_date（Agent 生成计划时写入）。
+    scheduled_map = {"t2": 1, "t1": 3, "t9": 4, "t18": 4, "t3": 5, "t21": 0, "t22": 2}
     for task_key, day_off in scheduled_map.items():
         tasks[task_key].scheduled_date = monday + timedelta(days=day_off)
 
