@@ -19,6 +19,7 @@ from app.models.plan import LearningPlan, LearningPlanItem
 from app.models.user import User
 from app.schemas.common import PaginationParams
 from app.schemas.plan import PlanItemOut
+from app.services import plan as plan_service
 from app.services.readonly import get_by_id_or_404, paginate
 
 router: APIRouter = APIRouter(prefix="/learning-plan-items", tags=["计划条目"])
@@ -50,16 +51,17 @@ def list_plan_items(
         dict[str, Any]: 统一响应体，data 为 {items, total, page, page_size}；
         未登录返回 HTTP 401 + code=1003。
     """
-    return success(
-        data=paginate(
-            db,
-            LearningPlanItem,
-            PlanItemOut,
-            page=page_params.page,
-            page_size=page_params.page_size,
-            filters=_ownership_filters(current_user),
-        )
+    data = paginate(
+        db,
+        LearningPlanItem,
+        PlanItemOut,
+        page=page_params.page,
+        page_size=page_params.page_size,
+        filters=_ownership_filters(current_user),
     )
+    # 与 /plans/current|upcoming 同一口径：关联任务已完成 → 条目展示 done
+    plan_service.apply_task_completion(db, data["items"])
+    return success(data=data)
 
 
 @router.get("/{item_id}", summary="计划条目详情")
@@ -80,12 +82,12 @@ def get_plan_item(
     Returns:
         dict[str, Any]: 统一响应体，data 为条目对象。
     """
-    return success(
-        data=get_by_id_or_404(
-            db,
-            LearningPlanItem,
-            item_id,
-            PlanItemOut,
-            filters=_ownership_filters(current_user),
-        )
+    data = get_by_id_or_404(
+        db,
+        LearningPlanItem,
+        item_id,
+        PlanItemOut,
+        filters=_ownership_filters(current_user),
     )
+    plan_service.apply_task_completion(db, [data])
+    return success(data=data)

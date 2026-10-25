@@ -542,7 +542,7 @@ svc --> user : 报告对象(含真实数字)
 3. **start_time / end_time**：可空；同一计划内 `(plan_date, start_time)` 联合唯一（应用层保证，契约 §6.5）；`end_time - start_time` 与 `estimated_minutes` 一致（分钟粒度）。
 4. **topic**：非空 ≤ 200 字符；任务条目 topic = 关联任务 title。
 5. **task_id**：任务条目必填（回填新建 agent 任务 id）；「休息/复习」条目为 null。
-6. **status**：枚举 `planned / done / skipped`；新建默认 planned；调整迁移时 done/skipped 原样保持（历史事实不可篡改）。
+6. **status**：枚举 `planned / done / skipped`；新建默认 planned；调整迁移时 done/skipped 原样保持（历史事实不可篡改）。出参合并：关联任务 status ∈ {done, review} 的 planned 条目展示为 `done`（初版无用户勾选入口，完成事实只记在任务上；服务端按页批量查询，不产生 N+1）。
 7. **priority**：枚举 `low / medium / high`；与关联任务 priority 一致；调整顺延顺序依据（low 先于 medium，high 不顺延）。
 
 ## **6.6 任务联动约束（tasks 落库逻辑约束）**

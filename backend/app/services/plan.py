@@ -624,7 +624,7 @@ def _persist_generated_plan(
     items = _ordered_items(plan)
     return {
         "plan": _plan_out(plan),
-        "items": [_item_out(item) for item in items],
+        "items": _items_out(db, items),
         "unplaced_tasks": unplaced_payload,
         "generated_by": generated_by,
     }
@@ -844,7 +844,7 @@ def get_current_plan(db: Session, user_id: int) -> dict[str, Any] | None:
         return None
     return {
         "plan": _plan_out(plan),
-        "items": [_item_out(item) for item in _ordered_items(plan)],
+        "items": _items_out(db, _ordered_items(plan)),
     }
 
 
@@ -874,7 +874,7 @@ def get_upcoming_plan(db: Session, user_id: int) -> dict[str, Any] | None:
         return None
     return {
         "plan": _plan_out(plan),
-        "items": [_item_out(item) for item in _ordered_items(plan)],
+        "items": _items_out(db, _ordered_items(plan)),
     }
 
 
@@ -939,3 +939,50 @@ def _plan_out(plan: LearningPlan) -> dict[str, Any]:
 def _item_out(item: LearningPlanItem) -> dict[str, Any]:
     """条目 ORM → PlanItemOut 形态 dict（JSON 序列化安全）。"""
     return PlanItemOut.model_validate(item).model_dump(mode="json")
+
+
+def apply_task_completion(
+    db: Session, item_dicts: list[dict[str, Any]]
+) -> None:
+    """就地合并条目完成态：关联任务 done/review → 条目出参 status=done。
+
+    初版计划条目自身 status 无写入入口（用户勾选交互属后续阶段），
+    完成事实只记在关联任务上；这里按当前页条目 id 批量查一次任务
+    状态（禁止 N+1），只把 planned 升级为 done——
+
+    - 不降级：条目自身已 done/skipped 的保持原值（历史事实不可篡改）；
+    - review 计入完成（与任务完成率口径一致，裁定②）。
+
+    Args:
+        db: 数据库会话。
+        item_dicts: 已序列化的条目 dict 列表（含 task_id / status），原地修改。
+    """
+    task_ids = [
+        int(d["task_id"])
+        for d in item_dicts
+        if d.get("task_id") is not None
+    ]
+    if not task_ids:
+        return
+    finished = set(
+        db.execute(
+            select(Task.id).where(
+                Task.id.in_(task_ids),
+                Task.status.in_([TaskStatus.DONE, TaskStatus.REVIEW]),
+            )
+        ).scalars()
+    )
+    if not finished:
+        return
+    for data in item_dicts:
+        if data.get("status") == "planned" and data.get("task_id") in finished:
+            data["status"] = "done"
+
+
+def _items_out(
+    db: Session, items: Sequence[LearningPlanItem]
+) -> list[dict[str, Any]]:
+    """批量组装条目出参（含关联任务完成态合并）。"""
+    payload = [_item_out(item) for item in items]
+    apply_task_completion(db, payload)
+    return payload

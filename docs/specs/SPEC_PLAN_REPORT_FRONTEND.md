@@ -189,9 +189,10 @@ frontend --> student : 周视图课表 / diff 对比视图 /\n报告卡片 / Mar
    a. 验收条件：[周五休息条目（start_time=null，topic 含「休息」）] → [周五列显示独立休息标记，上午/下午/晚上三行内不出现该条目]
 5. **条目卡片内容规则**：每个条目卡片显示：主题（topic）、起止时间（start_time ~ end_time，休息条目不显示时间）、预计时长（estimated_minutes，空则不显示该行）；task_id 非空时显示「关联任务」标识。
    a. 验收条件：[条目 topic=「线性代数：特征值」、19:00~20:30、90 分钟、关联任务] → [卡片同时可见四类信息]
-6. **未完成醒目标注规则**：条目状态 status='planned'（未完成）时，卡片左侧渲染醒目色条（Element Plus 主题色系，如 warning 橙）；status='done' 显示完成态（如对勾/灰显弱化）；status='skipped' 以删除线或灰显区分。**标注依据为条目自身 status 字段**（planned/done/skipped），不以关联任务的 todo/in_progress 状态另发请求查询——理由：条目自带执行状态即为用户心智中的「这条学习安排完成与否」，额外按 task_id 反查任务状态会引入 N+1 请求且超出本批范围。
+6. **未完成醒目标注规则**：条目状态 status='planned'（未完成）时，卡片左侧渲染醒目色条（Element Plus 主题色系，如 warning 橙）；status='done' 显示完成态（如对勾/灰显弱化）；status='skipped' 以删除线或灰显区分。**标注依据为条目自身 status 字段**（planned/done/skipped），前端不为标注额外发请求——条目完成态由服务端出参统一合并：关联任务 status ∈ {done, review} 的 planned 条目在 `/plans/current`、`/plans/upcoming`、`/learning-plan-items` 出参中已改为 done（服务端按页批量查一次，不产生 N+1；条目自身 done/skipped 不降级）。理由：初版条目 status 无用户勾选写入入口，完成事实只记在关联任务上，若前端只看原始字段会出现「任务已完成但计划卡不打勾」。
    a. 验收条件：[status='planned' 的条目] → [左侧出现醒目色条]
    b. 验收条件：[status='done' 的条目] → [无色条且有可辨识的完成样式]
+   c. 验收条件：[关联任务已完成（done/review）且条目自身为 planned] → [接口出参 status='done'，卡片显示完成态]
 7. **计划信息头规则**：周视图顶部显示：计划标题、周期（如「2026-10-26 ~ 2026-11-01」）、版本号（如「v3」）、生成方式徽章（LLM 规划 / 规则降级）；当展示的是会话态「下周计划」时，信息头需明确标注「下周计划」，与 current 语义的本周区分。
    a. 验收条件：[查看 v3、2026-10-26 ~ 2026-11-01、generated_by='llm' 的计划] → [顶部可见周期文本、v3 版本徽章、「LLM 规划」徽章]
    b. 验收条件：[generate 响应渲染的下周计划] → [信息头含「下周计划」字样]
