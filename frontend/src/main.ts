@@ -16,7 +16,7 @@ import './assets/main.css'
 
 const app = createApp(App)
 
-// Pinia + 持久化（token 落 localStorage，key = smartlearn_token）
+// Pinia（本地用户信息）
 const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate)
 

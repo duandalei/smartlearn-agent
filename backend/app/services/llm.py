@@ -140,7 +140,8 @@ def get_embedding_client() -> AsyncOpenAI:
 def reset_clients() -> None:
     """清空缓存的客户端单例。
 
-    仅供测试注入 mock 配置后重建使用，业务代码不得调用。
+    设置页保存新配置后调用，使新配置立即生效；测试注入 mock 配置后
+    重建时也使用本函数。
     """
     global _chat_client, _embedding_client
     _chat_client = None

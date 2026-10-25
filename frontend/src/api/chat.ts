@@ -15,27 +15,20 @@
 import { ElMessage } from 'element-plus'
 
 import request from './request'
-import { clearTokenAndRedirect } from './request'
-import { useUserStore } from '@/stores/user'
 import type { ChatHistoryResult, ChatQaPayload, QaSseEvent } from '@/types'
 
 /** SSE 事件回调接口（视图层把回调绑到响应式更新）。 */
-export interface StreamChatHandlers {
-  onSources: (sources: QaSseEvent & { type: 'sources' }) => void
+export interface StreamChatHandlers {  onSources: (sources: QaSseEvent & { type: 'sources' }) => void
   onDelta: (text: string) => void
   onDone: (data: Extract<QaSseEvent, { type: 'done' }>['data']) => void
   onError: (data: { code: number; message: string }) => void
 }
 
-/** 业务码：Token 无效或已过期（与 request.ts 同口径）。 */
-const CODE_TOKEN_INVALID = 1003
-
 /**
  * SSE 流式问答：POST /chat/qa，fetch + ReadableStream 逐块解析。
  *
  * - 受理阶段错误（HTTP 非 200，流未开始）：解析统一响应体 →
- *   401 / code=1003 时 clearTokenAndRedirect（复用 request.ts 的
- *   单一实现）+ 错误提示；其他业务码仅提示；随后 reject 终止。
+ *   提示后端中文文案；随后 reject 终止。
  * - 流内事件按 type 分发四回调；done / error 到达后 resolve
  *   （流终结）。
  * - 浏览器侧网络中断（reader.read() 抛错）：本地合成错误
@@ -50,7 +43,6 @@ export async function streamChatQa(
   payload: ChatQaPayload,
   handlers: StreamChatHandlers,
 ): Promise<void> {
-  const token = useUserStore().token
   const base = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
   let resp: Response
@@ -59,7 +51,6 @@ export async function streamChatQa(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(payload),
     })
@@ -81,8 +72,8 @@ export async function streamChatQa(
     } catch {
       // 响应体非 JSON（如网关 HTML 错误页），保留默认 message。
     }
-    if (resp.status === 401 || code === CODE_TOKEN_INVALID) {
-      clearTokenAndRedirect()
+    if (resp.status === 401) {
+      message = message || '请求未授权'
     }
     ElMessage.error(message)
     handlers.onError({ code, message })

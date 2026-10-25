@@ -643,15 +643,11 @@ def test_save_final_failure_not_fatal(
     assert "error" not in _types(events)
 
 
-def test_auth_and_acceptance_errors(app_client: Any, user_a: dict[str, Any]) -> None:
-    """受理错误三态：401/1003、422/1001、404/1005（D9，统一 JSON 非 SSE）。"""
-    resp = app_client.post(
-        "/api/v1/agent/chat", json={"message": "未登录提问"}
-    )
-    assert resp.status_code == 401
-    assert resp.json()["code"] == 1003
-    assert "text/event-stream" not in resp.headers.get("content-type", "")
+def test_acceptance_errors(app_client: Any, user_a: dict[str, Any]) -> None:
+    """受理错误两态：422/1001、404/1005（D9，统一 JSON 非 SSE）。
 
+    本地单用户模式不再有 401：无 Token 也归属本地用户。
+    """
     headers = user_a["headers"]
     resp = app_client.post(
         "/api/v1/agent/chat", json={"message": "   "}, headers=headers

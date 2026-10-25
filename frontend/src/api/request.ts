@@ -2,33 +2,21 @@
  * Axios 统一封装与拦截器（PROJECT_CONTEXT 7.3）。
  *
  * - 实例：baseURL 取自 VITE_API_BASE_URL，timeout 30s。
- * - 请求拦截器：注入 Authorization: Bearer <token>。
+ * - 本地单用户，不注入 Token，也不跳登录页。
  * - 响应拦截器：
- *     code === 0        -> 直接返回 data（业务层无需解包）；
- *     code !== 0        -> ElMessage.error + reject；
- *     401 / 1002 / 1003 -> 清除 token 并跳转 /login；
- *     网络错误          -> 统一提示「网络异常，请稍后重试」。
+ *     code === 0 -> 直接返回 data（业务层无需解包）；
+ *     code !== 0 -> ElMessage.error + reject；
+ *     网络错误   -> 统一提示「网络异常，请稍后重试」。
  *
  * 所有业务接口函数返回 Promise<T>，T 定义在 src/types。
  */
-import axios, {
-  type AxiosInstance,
-  type AxiosResponse,
-  type InternalAxiosRequestConfig,
-} from 'axios'
+import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 import { ElMessage } from 'element-plus'
 
 import type { ApiResponse } from '@/types'
 
-/** token 在 localStorage 中的固定 key（PROJECT_CONTEXT 7.4）。 */
-export const TOKEN_KEY = 'smartlearn_token'
-
 /** 业务码：成功 */
 const CODE_SUCCESS = 0
-/** 业务码：用户名或密码错误 */
-const CODE_AUTH_FAILED = 1002
-/** 业务码：Token 无效或已过期 */
-const CODE_TOKEN_INVALID = 1003
 
 const request: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
@@ -38,41 +26,6 @@ const request: AxiosInstance = axios.create({
   // 若在此固定 application/json，文件上传的 multipart 头会被覆盖，
   // 后端解析不到 file 字段，返回 422 / 1001「参数校验失败」。
 })
-
-// ---------------------------------------------------------------------------
-// 工具：token 读写（供请求拦截器与 401 处理复用）
-// ---------------------------------------------------------------------------
-function getToken(): string {
-  return localStorage.getItem(TOKEN_KEY) || ''
-}
-
-/**
- * 清除 token 并跳转登录页（fetch SSE 路径 401 复用，决策 D8）。
- *
- * P9 起导出：fetch 流式路径不经 Axios 拦截器，但 401 行为必须与
- * Axios 路径一致（清 token + 跳 /login）；单一实现防两处漂移。
- */
-export function clearTokenAndRedirect(): void {
-  localStorage.removeItem(TOKEN_KEY)
-  // 避免在登录页重复跳转
-  if (window.location.pathname !== '/login') {
-    window.location.href = '/login'
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 请求拦截器：注入 Bearer Token
-// ---------------------------------------------------------------------------
-request.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = getToken()
-    if (token) {
-      config.headers.set('Authorization', `Bearer ${token}`)
-    }
-    return config
-  },
-  (error: unknown) => Promise.reject(error),
-)
 
 // ---------------------------------------------------------------------------
 // 响应拦截器：统一解包 + 错误提示
@@ -95,10 +48,6 @@ const unwrapResponse = ((response: AxiosResponse<ApiResponse>) => {
     return res.data
   }
 
-  // 业务失败：401 / 1002 / 1003 需清 token 跳登录
-  if (res.code === CODE_AUTH_FAILED || res.code === CODE_TOKEN_INVALID) {
-    clearTokenAndRedirect()
-  }
   ElMessage.error(res.message || '请求失败')
   return Promise.reject(new Error(res.message || '请求失败'))
 }) as unknown as RawFulfilled
@@ -110,8 +59,7 @@ request.interceptors.response.use(
     if (axios.isAxiosError(error)) {
       const status = error.response?.status
       if (status === 401) {
-        clearTokenAndRedirect()
-        ElMessage.error('登录已过期，请重新登录')
+        ElMessage.error('请求未授权')
       } else if (status === 403) {
         ElMessage.error('无权限访问该资源')
       } else if (error.response) {

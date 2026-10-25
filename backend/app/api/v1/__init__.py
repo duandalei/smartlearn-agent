@@ -5,9 +5,8 @@
   由 main.py 直接挂载到 ``/health``。
 - ``api_router``：业务路由，由 main.py 以 ``/api/v1`` 前缀挂载。
 
-P3 起全量端点鉴权（PROJECT_CONTEXT 收编裁决）：除 ``/health``、
-``/api/v1/auth/register``、``/api/v1/auth/login`` 三个公开端点外，
-所有 ``/api/v1`` 端点均依赖 ``get_current_user`` 并按当前用户隔离数据。
+本地单用户模式：不再有注册 / 登录 / Token；所有 ``/api/v1`` 端点
+统一依赖 ``get_current_user``，返回同一条本地用户记录。
 """
 
 from __future__ import annotations
@@ -34,6 +33,7 @@ from app.api.v1.agent import router as agent_router
 from app.api.v1.agent_messages import router as agent_messages_router
 from app.api.v1.reports import router as reports_router
 from app.api.v1.chat import router as chat_router
+from app.api.v1.settings import router as settings_router
 
 # 业务路由（挂载前缀 /api/v1）。
 api_router: APIRouter = APIRouter()
@@ -56,6 +56,7 @@ api_router.include_router(agent_router)
 api_router.include_router(agent_messages_router)
 api_router.include_router(reports_router)
 api_router.include_router(chat_router)
+api_router.include_router(settings_router)
 
 # 健康检查路由（不带前缀，直接挂 /health）。
 __all__ = ["api_router", "health_router"]

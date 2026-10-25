@@ -6,7 +6,7 @@
 3. 注册全局异常处理器（统一 ``{code, message, data}`` 响应）。
 4. 挂载路由：业务路由前缀 ``/api/v1``，健康检查 ``/health``（无前缀）。
 
-启动方式见项目根 README 或 backend/run.sh。
+启动方式见项目根 README 或 backend/run.bat。
 """
 
 from __future__ import annotations

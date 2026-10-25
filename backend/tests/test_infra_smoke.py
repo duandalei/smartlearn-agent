@@ -2,13 +2,14 @@
 
 
 def test_isolated_db_and_users(app_client, user_a, user_b):
-    """临时库 + 双用户注册 + 鉴权列表请求全链路冒烟。"""
+    """临时库 + 测试用户 + 本地单用户列表请求全链路冒烟。"""
     resp = app_client.get("/api/v1/knowledge/items", headers=user_a["headers"])
     assert resp.status_code == 200
     body = resp.json()
     assert body["code"] == 0
     assert body["data"]["total"] == 0
-    assert app_client.get("/api/v1/knowledge/items").status_code == 401
+    # 本地单用户：不带 X-Test-User 也归属本地用户，不再返回 401。
+    assert app_client.get("/api/v1/knowledge/items").status_code == 200
 
 
 def test_db_is_not_production_file():

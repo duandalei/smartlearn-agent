@@ -5,10 +5,11 @@
  * 菜单项与 PROJECT_CONTEXT 7.1 路由表一一对应，
  * 点击菜单执行路由跳转（el-menu router 模式）。
  */
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 
+import { fetchLlmSettings } from '@/api/settings'
 import { useUserStore } from '@/stores/user'
 
 interface MenuItem {
@@ -24,6 +25,39 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
+onMounted(async () => {
+  await userStore.loadUser()
+  await maybePromptLlmSettings()
+})
+
+/** 首次进入：未配置模型 API 时提示去设置（本次会话可稍后）。 */
+async function maybePromptLlmSettings(): Promise<void> {
+  const suppressKey = 'smartlearn.llm_prompt_suppressed'
+  if (sessionStorage.getItem(suppressKey) === '1') return
+  if (route.path === '/settings') return
+  try {
+    const status = await fetchLlmSettings()
+    if (status.configured) return
+    try {
+      await ElMessageBox.confirm(
+        '还没有配置模型 API。不配置也能记录学习，但 AI 问答、计划生成和成长报告不可用。',
+        '先配置模型 API',
+        {
+          confirmButtonText: '去设置',
+          cancelButtonText: '稍后',
+          type: 'warning',
+        },
+      )
+      void router.push('/settings')
+    } catch {
+      // 「稍后」：只关本次会话，下次启动继续提示
+      sessionStorage.setItem(suppressKey, '1')
+    }
+  } catch {
+    // 设置状态读取失败不阻塞首页
+  }
+}
+
 const menus: MenuItem[] = [
   { index: '/dashboard', title: '学习中心', icon: 'Odometer' },
   { index: '/goals', title: '学习目标', icon: 'Aim' },
@@ -33,29 +67,15 @@ const menus: MenuItem[] = [
   { index: '/knowledge-base', title: '知识库', icon: 'Collection' },
   { index: '/ai-agent', title: 'AI 助手', icon: 'ChatDotRound' },
   { index: '/reports', title: '成长报告', icon: 'DataAnalysis' },
-  // 学习档案为低频账号入口，沉底；设置页暂未实现，菜单先隐藏
+  // 学习档案为低频账号入口，沉底；设置永远在最底部
   { index: '/profile', title: '学习档案', icon: 'User' },
+  { index: '/settings', title: '设置', icon: 'Setting' },
 ]
 
 /** 当前高亮菜单项 = 当前路由路径 */
 const activeMenu = computed(() => route.path)
 /** 顶部栏标题 = 当前路由 meta.title */
 const currentTitle = computed(() => (route.meta.title as string) || '')
-
-/** 退出登录 */
-async function handleLogout(): Promise<void> {
-  try {
-    await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    userStore.logout()
-    router.push('/login')
-  } catch {
-    // 用户取消，忽略
-  }
-}
 </script>
 
 <template>
@@ -84,9 +104,8 @@ async function handleLogout(): Promise<void> {
         <span class="header-title">{{ currentTitle }}</span>
         <div class="header-right">
           <span class="header-user">
-            {{ userStore.userInfo?.username || '未登录用户' }}
+            {{ userStore.userInfo?.username || '本地用户' }}
           </span>
-          <el-button link type="primary" @click="handleLogout">退出登录</el-button>
         </div>
       </el-header>
 

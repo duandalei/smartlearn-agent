@@ -14,15 +14,12 @@
  * 顺序，不得被后续 catch 逻辑重排。视图层在 abort() 前置位
  * stopped 标记（保留内容红线）。
  *
- * 会话管理五函数走 request.ts（Axios 统一通道：token 注入 / code
- * 解包 / 错误 ElMessage / 401 清 token 跳转全部由拦截器完成——
- * 本文件零手写 401 跳转，clearTokenAndRedirect 仅用于 SSE 受理段）。
+ * 会话管理五函数走 request.ts（Axios 统一通道：code 解包 /
+ * 错误 ElMessage 全部由拦截器完成；本地单用户无 Token）。
  */
 import { ElMessage } from 'element-plus'
 
 import request from './request'
-import { clearTokenAndRedirect } from './request'
-import { useUserStore } from '@/stores/user'
 import type {
   AgentChatPayload,
   AgentConversation,
@@ -30,9 +27,6 @@ import type {
   AgentSseEvent,
   ConversationPage,
 } from '@/types/agent'
-
-/** 业务码：Token 无效或已过期（与 request.ts 同口径）。 */
-const CODE_TOKEN_INVALID = 1003
 
 /** SSE 事件回调接口（六事件；thinking 入参放宽做前向兼容）。 */
 export interface AgentStreamHandlers {
@@ -50,9 +44,7 @@ export interface AgentStreamHandlers {
  * Agent SSE 流式对话：POST /agent/chat，fetch + ReadableStream。
  *
  * - 受理阶段错误（HTTP 非 200，流未开始）：统一响应体 JSON →
- *   401 / code=1003 时 clearTokenAndRedirect + 提示；422/1001、
- *   404/1005 走通用 ElMessage(message)（后端中文文案直出）；随后
- *   onError 终止。
+ *   提示后端中文文案；随后 onError 终止。
  * - 流内六事件按 type 分发；done / error 到达后 resolve。
  * - 停止（signal aborted）：catch 首句静默 return（R3 硬约束），
  *   不合成网络中断、不触发 onError。
@@ -67,7 +59,6 @@ export async function streamAgentChat(
   handlers: AgentStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = useUserStore().token
   const base = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
   let resp: Response
@@ -76,7 +67,6 @@ export async function streamAgentChat(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(payload),
       signal,
@@ -101,8 +91,8 @@ export async function streamAgentChat(
     } catch {
       // 响应体非 JSON（如网关 HTML 错误页），保留默认 message。
     }
-    if (resp.status === 401 || code === CODE_TOKEN_INVALID) {
-      clearTokenAndRedirect()
+    if (resp.status === 401) {
+      message = message || '请求未授权'
     }
     ElMessage.error(message)
     handlers.onError({ code, message })

@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi import Depends, Request
+from sqlalchemy.orm import Session
 
 # ---------------------------------------------------------------------------
 # 环境隔离（必须在 import app 之前执行）
@@ -41,7 +43,7 @@ os.environ["DATABASE_URL"] = f"sqlite:///{(_TEST_ROOT / 'test.db').as_posix()}"
 # 本目录树生效，对本文件的决策须由 scripts/ 自己的 conftest 作出。
 
 # 沙箱 IPv6 socketpair 补丁：按文件路径加载（不依赖包结构）。
-_SANDBOX_PATCH = Path(__file__).resolve().parent.parent / "scripts" / "_sandbox_patch.py"
+_SANDBOX_PATCH = Path(__file__).resolve().parent / "_sandbox_patch.py"
 if _SANDBOX_PATCH.is_file():
     _spec = importlib.util.spec_from_file_location("_sandbox_patch", _SANDBOX_PATCH)
     if _spec is not None and _spec.loader is not None:
@@ -53,44 +55,84 @@ _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
+# app 相关导入必须放在 DATABASE_URL 设置与 sys.path 准备之后。
+from app.api.deps import get_current_user, get_db  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.services.local_user import ensure_local_user  # noqa: E402
 
-def _register_user(client: Any, username: str) -> dict[str, Any]:
-    """经公开注册端点创建用户并返回鉴权头。
+
+def _create_test_user(username: str) -> dict[str, Any]:
+    """直接在测试库创建用户并返回测试用身份头。
+
+    生产环境为本地单用户，没有登录/注册；测试通过 ``X-Test-User``
+    头选择当前用户，以保留多用户隔离场景的覆盖。应用侧只在该
+    fixture 的依赖覆盖里识别这个头，生产代码不包含。
 
     Args:
-        client: TestClient 实例。
-        username: 登录名（每测试 drop_all 重建后可重复使用同名）。
+        username: 测试用户名（每测试 drop_all 重建后可重复使用同名）。
 
     Returns:
-        dict[str, Any]: ``{"token", "headers", "username"}``。
+        dict[str, Any]: ``{"id", "headers", "username"}``。
     """
-    response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "username": username,
-            "password": "Passw0rd123!",
-            "confirm_password": "Passw0rd123!",
-        },
-    )
-    assert response.status_code == 200, response.text
-    data = response.json()["data"]
-    token = data["access_token"]
+    from app.db.session import SessionLocal
+    from app.models.user import User, UserProfile
+
+    with SessionLocal() as db:
+        user = User(
+            username=username,
+            email=None,
+            hashed_password="!",
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+        db.add(
+            UserProfile(
+                user_id=user.id,
+                name=None,
+                school=None,
+                major=None,
+                grade=None,
+                current_goal_type=None,
+                interest_directions=[],
+                daily_study_minutes=60,
+            )
+        )
+        db.commit()
+        db.refresh(user)
+        user_id = user.id
     return {
-        "token": token,
-        "headers": {"Authorization": f"Bearer {token}"},
+        "id": user_id,
+        "headers": {"X-Test-User": str(user_id)},
         "username": username,
     }
 
 
 @pytest.fixture(scope="session")
 def app_client() -> Any:
-    """ASGI 直调 TestClient（会话级单例，应用导入一次）。"""
+    """ASGI 直调 TestClient（会话级单例，应用导入一次）。
+
+    生产环境的 ``get_current_user`` 是本地单用户；测试里覆盖为
+    ``X-Test-User`` 头选择用户，从而继续验证用户间数据隔离。
+    """
     from fastapi.testclient import TestClient
 
     from app.main import app
 
+    def _test_current_user(
+        request: Request, db: Session = Depends(get_db)
+    ) -> User:
+        raw = request.headers.get("x-test-user", "")
+        if raw.isdigit():
+            user = db.get(User, int(raw))
+            if user is not None:
+                return user
+        return ensure_local_user(db)
+
+    app.dependency_overrides[get_current_user] = _test_current_user
     with TestClient(app) as client:
         yield client
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.fixture(autouse=True)
@@ -116,14 +158,14 @@ def _isolated_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
 
 @pytest.fixture
 def user_a(app_client: Any) -> dict[str, Any]:
-    """用户 A（注册 + JWT 鉴权头）。"""
-    return _register_user(app_client, "student_a")
+    """用户 A（测试身份头）。"""
+    return _create_test_user("student_a")
 
 
 @pytest.fixture
 def user_b(app_client: Any) -> dict[str, Any]:
-    """用户 B（注册 + JWT 鉴权头，用于隔离断言）。"""
-    return _register_user(app_client, "student_b")
+    """用户 B（测试身份头，用于隔离断言）。"""
+    return _create_test_user("student_b")
 
 
 @pytest.fixture
@@ -165,12 +207,11 @@ def upload_document(client: Any, user: dict[str, Any], filename: str, content: b
 def demo_docs(
     app_client: Any, user_a: dict[str, Any], offline_embedding: None
 ) -> list[int]:
-    """播种 4 篇演示文档到 user_a 个人库并跑真实离线流水线。
+    """播种 4 篇测试文档到 user_a 个人库并跑真实离线流水线。
 
-    源文件即 demo 用户的上传文件（``data/uploads/1/1_*.md`` ~
-    ``4_*.md``），建档模拟 ``db/init_db.py`` 种子（scope=personal、
-    user_id=user_a），随后逐篇 ``process_document``（本地兜底向量化
-    真实入库）；返回 item id 列表（按文件名排序）。公共库能力已移除。
+    源文件为 ``backend/tests/fixtures/uploads/`` 下的测试素材，随后
+    逐篇 ``process_document``（本地兜底向量化真实入库）；返回 item id
+    列表（按文件名排序）。
     """
     import asyncio
 
@@ -187,7 +228,7 @@ def demo_docs(
     user_id = app_client.get(
         "/api/v1/auth/me", headers=user_a["headers"]
     ).json()["data"]["id"]
-    seed_dir = PROJECT_ROOT / "data" / "uploads" / "1"
+    seed_dir = Path(__file__).resolve().parent / "fixtures" / "uploads"
     names = [
         "1_ml_basics.md",
         "2_linear_algebra_notes.md",
@@ -195,7 +236,7 @@ def demo_docs(
         "4_ds_cheatsheet.md",
     ]
     files = [seed_dir / name for name in names]
-    assert all(p.is_file() for p in files), f"演示上传文件缺失: {seed_dir}"
+    assert all(p.is_file() for p in files), f"测试上传文件缺失: {seed_dir}"
     item_ids: list[int] = []
     with SessionLocal() as db:
         for md_file in files:
@@ -203,7 +244,7 @@ def demo_docs(
                 user_id=user_id,
                 title=md_file.stem.split("_", 1)[-1],
                 source_type=KnowledgeSourceType.MD,
-                file_path=f"data/uploads/1/{md_file.name}",
+                file_path=md_file.resolve().relative_to(PROJECT_ROOT).as_posix(),
                 scope=KnowledgeScope.PERSONAL,
                 status=KnowledgeItemStatus.PENDING,
                 chunk_count=0,

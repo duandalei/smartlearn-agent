@@ -265,15 +265,6 @@ def test_stream_chat_intent_skips_retrieval(
 # ---------------------------------------------------------------------------
 # 受理错误走统一响应体（裁决 #10；spec 5.1.1 规则 1/6）
 # ---------------------------------------------------------------------------
-def test_qa_requires_auth(app_client: Any) -> None:
-    """无 token：HTTP 401 + code=1003 JSON（非 SSE）。"""
-    resp = app_client.post("/api/v1/chat/qa", json={"question": "什么是 Transformer"})
-    assert resp.status_code == 401
-    body = resp.json()
-    assert body["code"] == 1003
-    assert "text/event-stream" not in resp.headers.get("content-type", "")
-
-
 @pytest.mark.parametrize(
     "payload",
     [
@@ -294,11 +285,16 @@ def test_qa_validation_errors(
     assert resp.json()["code"] == 1001
 
 
-def test_history_requires_auth(app_client: Any) -> None:
-    """历史端点无 token：401 + 1003。"""
+def test_history_without_login_ok(app_client: Any) -> None:
+    """本地单用户：历史端点无 Token 也可读，空库返回空分页。"""
     resp = app_client.get("/api/v1/chat/history")
-    assert resp.status_code == 401
-    assert resp.json()["code"] == 1003
+    assert resp.status_code == 200
+    assert resp.json()["data"] == {
+        "items": [],
+        "total": 0,
+        "page": 1,
+        "page_size": 10,
+    }
 
 
 # ---------------------------------------------------------------------------

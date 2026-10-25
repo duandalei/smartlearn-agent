@@ -113,20 +113,19 @@ def test_threshold_filter_lowered_threshold(monkeypatch: pytest.MonkeyPatch) -> 
 # ---------------------------------------------------------------------------
 # RAG_MIN_SCORE 配置（spec 4.4 规则 2；tasks.md 1.1）
 # ---------------------------------------------------------------------------
-_TEST_SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
 
 
 def test_config_rag_min_score_default() -> None:
     """未配置时默认 0.55。"""
-    s = Settings(JWT_SECRET=_TEST_SECRET)
+    s = Settings()
     assert s.RAG_MIN_SCORE == 0.55
 
 
 def test_config_rag_min_score_empty_fallback() -> None:
     """留空（init 空串 / None）回退 0.55，不为 0 或 None。"""
-    assert Settings(JWT_SECRET=_TEST_SECRET, RAG_MIN_SCORE="").RAG_MIN_SCORE == 0.55
-    assert Settings(JWT_SECRET=_TEST_SECRET, RAG_MIN_SCORE=None).RAG_MIN_SCORE == 0.55
-    assert Settings(JWT_SECRET=_TEST_SECRET, RAG_MIN_SCORE="  ").RAG_MIN_SCORE == 0.55
+    assert Settings(RAG_MIN_SCORE="").RAG_MIN_SCORE == 0.55
+    assert Settings(RAG_MIN_SCORE=None).RAG_MIN_SCORE == 0.55
+    assert Settings(RAG_MIN_SCORE="  ").RAG_MIN_SCORE == 0.55
 
 
 def test_config_rag_min_score_env_empty_fallback(
@@ -149,7 +148,7 @@ def test_config_rag_min_score_env_override(
 def test_config_rag_min_score_invalid_rejected(bad: str) -> None:
     """非法值（>1 / 负数）→ 配置加载失败。"""
     with pytest.raises(ValidationError):
-        Settings(JWT_SECRET=_TEST_SECRET, RAG_MIN_SCORE=bad)
+        Settings(RAG_MIN_SCORE=bad)
 
 
 # ---------------------------------------------------------------------------

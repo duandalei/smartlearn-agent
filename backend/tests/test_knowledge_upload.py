@@ -33,14 +33,14 @@ def _get_item(client: Any, user: dict[str, Any], item_id: int) -> dict[str, Any]
     return resp.json()["data"]
 
 
-def test_upload_requires_login(app_client: Any) -> None:
-    """未登录上传 → HTTP 401 + code=1003。"""
+def test_upload_without_login_allowed(app_client: Any) -> None:
+    """本地单用户：不带 Token 也能上传（归属本地用户）。"""
     resp = app_client.post(
         "/api/v1/knowledge/upload",
         files={"file": ("a.md", _MD_CONTENT)},
     )
-    assert resp.status_code == 401
-    assert resp.json()["code"] == 1003
+    assert resp.status_code == 200
+    assert resp.json()["code"] == 0
 
 
 def test_upload_type_unsupported_exe(

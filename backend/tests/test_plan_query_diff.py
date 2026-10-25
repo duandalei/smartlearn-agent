@@ -155,16 +155,10 @@ def test_q3_p3_plans_list_and_detail_regression(
     assert resp_cross.json()["code"] == 1005
 
 
-def test_q4_auth_required(app_client: Any) -> None:
-    """Q4：未携带 token → 401 + code=1003（current / diff / generate / adjust）。"""
+def test_q4_local_mode_without_token(app_client: Any) -> None:
+    """Q4（本地单用户）：无 Token 也可读取 current；不存在的计划仍 404。"""
     resp = app_client.get("/api/v1/plans/current")
-    assert resp.status_code == 401 and resp.json()["code"] == 1003
+    assert resp.status_code == 200 and resp.json()["data"] is None
 
     resp = app_client.get("/api/v1/plans/1/diff")
-    assert resp.status_code == 401 and resp.json()["code"] == 1003
-
-    resp = app_client.post("/api/v1/plans/generate", json={})
-    assert resp.status_code == 401 and resp.json()["code"] == 1003
-
-    resp = app_client.post("/api/v1/plans/1/adjust", json={})
-    assert resp.status_code == 401 and resp.json()["code"] == 1003
+    assert resp.status_code == 404 and resp.json()["code"] == 1005

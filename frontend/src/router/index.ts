@@ -1,22 +1,13 @@
 /**
- * 路由表与全局前置守卫（PROJECT_CONTEXT 7.1）。
+ * 路由表（PROJECT_CONTEXT 7.1）。
  *
- * 所有页面已注册（组件为骨架阶段占位组件）；守卫规则：
- * - 目标路由 needsAuth 且无 token -> 跳 /login；
- * - 已登录访问 /login -> 跳 /dashboard。
+ * 本地单用户：不设登录页与鉴权守卫，打开即进入主布局。
  */
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
-import { useUserStore } from '@/stores/user'
 import MainLayout from '@/layouts/MainLayout.vue'
 
 const routes: RouteRecordRaw[] = [
-  {
-    path: '/login',
-    name: 'login',
-    component: () => import('@/views/LoginView.vue'),
-    meta: { title: '登录', needsAuth: false },
-  },
   {
     path: '/',
     component: MainLayout,
@@ -26,43 +17,43 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'dashboard',
         component: () => import('@/views/DashboardView.vue'),
-        meta: { title: '学习中心', needsAuth: true },
+        meta: { title: '学习中心' },
       },
       {
         path: 'profile',
         name: 'profile',
         component: () => import('@/views/ProfileView.vue'),
-        meta: { title: '学习档案', needsAuth: true },
+        meta: { title: '学习档案' },
       },
       {
         path: 'goals',
         name: 'goals',
         component: () => import('@/views/GoalsView.vue'),
-        meta: { title: '学习目标', needsAuth: true },
+        meta: { title: '学习目标' },
       },
       {
         path: 'plans',
         name: 'plans',
         component: () => import('@/views/PlanView.vue'),
-        meta: { title: '学习计划', needsAuth: true },
+        meta: { title: '学习计划' },
       },
       {
         path: 'tasks',
         name: 'tasks',
         component: () => import('@/views/TasksView.vue'),
-        meta: { title: '学习任务', needsAuth: true },
+        meta: { title: '学习任务' },
       },
       {
         path: 'learning-records',
         name: 'learning-records',
         component: () => import('@/views/LearningRecordsView.vue'),
-        meta: { title: '学习记录', needsAuth: true },
+        meta: { title: '学习记录' },
       },
       {
         path: 'knowledge-base',
         name: 'knowledge-base',
         component: () => import('@/views/KnowledgeBaseView.vue'),
-        meta: { title: '知识库', needsAuth: true },
+        meta: { title: '知识库' },
       },
       {
         // AI 问答入口已收敛至 AI 助手；AskView.vue 与 /chat/qa 链路
@@ -74,19 +65,19 @@ const routes: RouteRecordRaw[] = [
         path: 'ai-agent',
         name: 'ai-agent',
         component: () => import('@/views/AgentView.vue'),
-        meta: { title: 'AI 助手', needsAuth: true },
+        meta: { title: 'AI 助手' },
       },
       {
         path: 'reports',
         name: 'reports',
         component: () => import('@/views/ReportsView.vue'),
-        meta: { title: '成长报告', needsAuth: true },
+        meta: { title: '成长报告' },
       },
       {
-        // 设置页暂未实现：菜单已隐藏，直接访问重定向到学习中心；
-        // 以后接入时改回 component: () => import('@/views/SettingsView.vue')
         path: 'settings',
-        redirect: '/dashboard',
+        name: 'settings',
+        component: () => import('@/views/SettingsView.vue'),
+        meta: { title: '设置' },
       },
     ],
   },
@@ -100,20 +91,6 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-})
-
-router.beforeEach((to) => {
-  const userStore = useUserStore()
-  const needsAuth = to.meta.needsAuth !== false
-  const authed = userStore.isAuthenticated()
-
-  if (needsAuth && !authed) {
-    return { path: '/login', query: { redirect: to.fullPath } }
-  }
-  if (to.path === '/login' && authed) {
-    return { path: '/dashboard' }
-  }
-  return true
 })
 
 export default router

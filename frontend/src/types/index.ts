@@ -25,7 +25,7 @@ export interface HealthData {
   status: string
 }
 
-/** 登录用户信息（对齐后端 UserOut，不含密码相关字段）。 */
+/** 当前本地用户信息（对齐后端 UserOut，不含密码相关字段）。 */
 export interface UserInfo {
   id: number
   username: string
@@ -33,26 +33,6 @@ export interface UserInfo {
   is_active: boolean
   created_at: string
   updated_at: string
-}
-
-/** 登录 / 注册入参（POST /auth/login、POST /auth/register）。 */
-export interface LoginPayload {
-  username: string
-  password: string
-}
-
-/** 注册入参（须与后端 RegisterIn 一致：用户名 ≥2 位，密码 ≥6 位）。 */
-export interface RegisterPayload {
-  username: string
-  password: string
-  confirm_password: string
-}
-
-/** 登录 / 注册成功响应的 data（对齐后端 AuthResult）。 */
-export interface AuthResult {
-  access_token: string
-  token_type: string
-  user: UserInfo
 }
 
 /** 用户学习档案（对齐后端 UserProfileOut）。 */

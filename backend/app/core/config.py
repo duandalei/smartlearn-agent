@@ -8,19 +8,15 @@
     LLM_BASE_URL / LLM_API_KEY / LLM_MODEL（对话配置组）
     EMBEDDING_BASE_URL / EMBEDDING_API_KEY / EMBEDDING_MODEL（向量化配置组，
     任一项为空时逐项回退对应 LLM_* 值）
-    JWT_SECRET / DATABASE_URL / CHROMA_DIR / RAG_MIN_SCORE
-"""
+    DATABASE_URL / CHROMA_DIR / RAG_MIN_SCORE"""
 
 from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-# JWT_SECRET 禁止使用的占位值（与 backend/.env.example 保持一致）。
-_JWT_SECRET_PLACEHOLDER: str = "change-me-in-env"
 
 # ---------------------------------------------------------------------------
 # 路径计算：backend/app/core/config.py -> backend -> 项目根
@@ -56,9 +52,6 @@ class Settings(BaseSettings):
         EMBEDDING_BASE_URL: 向量化服务地址（向量化配置组，空则回退 LLM_BASE_URL）。
         EMBEDDING_API_KEY: 向量化服务密钥（向量化配置组，空则回退 LLM_API_KEY）。
         EMBEDDING_MODEL: 向量化模型名（向量化配置组，空则回退 LLM_MODEL）。
-        JWT_SECRET: JWT 签发与校验密钥。
-        JWT_ALGORITHM: JWT 签名算法。
-        JWT_EXPIRE_MINUTES: Token 有效期（分钟）。
         DATABASE_URL: SQLAlchemy 连接串，默认 SQLite 文件 data/smartlearn.db。
         CHROMA_DIR: Chroma 本地持久化目录。
         CORS_ORIGINS: 允许跨域的前端地址列表。
@@ -85,11 +78,6 @@ class Settings(BaseSettings):
     EMBEDDING_BASE_URL: str = ""
     EMBEDDING_API_KEY: str = ""
     EMBEDDING_MODEL: str = ""
-
-    # ---- 安全 -------------------------------------------------------------
-    JWT_SECRET: str = "change-me-in-env"
-    JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7
 
     # ---- 数据库 -----------------------------------------------------------
     # 默认指向项目根 data/smartlearn.db（SQLite），可在 .env 中覆盖。
@@ -165,26 +153,6 @@ class Settings(BaseSettings):
             str: 向量化实际使用的模型名。
         """
         return self.EMBEDDING_MODEL.strip() or self.LLM_MODEL.strip()
-
-    @model_validator(mode="after")
-    def _validate_jwt_secret(self) -> "Settings":
-        """启动时强制校验 JWT 密钥（安全红线）。
-
-        JWT_SECRET 为空、纯空白或仍等于 .env.example 的占位值时，
-        配置加载直接失败 —— 服务必须启动失败退出，禁止使用任何
-        内置默认密钥继续运行。
-
-        Raises:
-            ValueError: JWT_SECRET 缺失或仍为占位值。
-        """
-        secret = (self.JWT_SECRET or "").strip()
-        if not secret or secret == _JWT_SECRET_PLACEHOLDER:
-            raise ValueError(
-                "JWT_SECRET 未配置或仍为占位值：请在 .env 中设置为随机强密钥"
-                "（可用 python -c \"import secrets; print(secrets.token_hex(32))\" "
-                "生成）。禁止使用空值或占位值启动服务。"
-            )
-        return self
 
 
 @lru_cache(maxsize=1)
