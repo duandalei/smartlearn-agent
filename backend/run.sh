@@ -14,10 +14,13 @@ if [ -d ".venv" ]; then
   source .venv/bin/activate 2>/dev/null || source .venv/Scripts/activate 2>/dev/null || true
 fi
 
-# 首次运行可用 .env.example 生成 .env（不覆盖已有 .env）
-if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-  echo "[提示] 未检测到 .env，已由 .env.example 生成，请按需填写真实密钥。"
-  cp .env.example .env
+# 环境自检：缺 .env 时复制模板；JWT_SECRET 仍为占位值时自动生成随机值
+python scripts/ensure_dev_env.py
+
+# 首次启动：数据库不存在时写入演示种子数据
+if [ ! -f "../data/smartlearn.db" ]; then
+  echo "[初始化] 未检测到数据库，正在写入演示种子数据 ..."
+  python -m app.db.init_db
 fi
 
 HOST="${HOST:-0.0.0.0}"

@@ -13,12 +13,15 @@ if exist ".venv\Scripts\activate.bat" (
     call ".venv\Scripts\activate.bat"
 )
 
-REM 首次运行可用 .env.example 生成 .env（不覆盖已有 .env）
-if not exist ".env" (
-    if exist ".env.example" (
-        echo [提示] 未检测到 .env，已由 .env.example 生成，请按需填写真实密钥。
-        copy ".env.example" ".env" >nul
-    )
+REM 环境自检：缺 .env 时复制模板；JWT_SECRET 仍为占位值时自动生成随机值
+python scripts\ensure_dev_env.py
+if errorlevel 1 exit /b 1
+
+REM 首次启动：数据库不存在时写入演示种子数据
+if not exist "..\data\smartlearn.db" (
+    echo [初始化] 未检测到数据库，正在写入演示种子数据 ...
+    python -m app.db.init_db
+    if errorlevel 1 exit /b 1
 )
 
 if "%HOST%"=="" set HOST=0.0.0.0

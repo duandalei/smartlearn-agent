@@ -15,8 +15,12 @@ echo "[1/2] 启动后端 ..."
     # shellcheck disable=SC1091
     source .venv/bin/activate 2>/dev/null || source .venv/Scripts/activate 2>/dev/null || true
   fi
-  if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-    cp .env.example .env
+  # 环境自检：缺 .env 时复制模板；JWT_SECRET 仍为占位值时自动生成随机值
+  python scripts/ensure_dev_env.py
+  # 首次启动：数据库不存在时自动写入演示种子数据
+  if [ ! -f "${ROOT_DIR}/data/smartlearn.db" ]; then
+    echo "[初始化] 未检测到数据库，正在写入演示种子数据 ..."
+    python -m app.db.init_db
   fi
   exec python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ) &

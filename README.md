@@ -6,6 +6,38 @@
 
 ---
 
+## 零、快速开始（推荐）
+
+```bash
+git clone <仓库地址> smartlearn
+cd smartlearn
+
+# Windows
+setup.bat
+
+# macOS / Linux / Git-Bash
+bash setup.sh
+```
+
+配置完成后启动：
+
+```bat
+start.bat
+```
+```bash
+bash start.sh
+```
+
+浏览器打开 http://localhost:5173 ：
+
+- **注册新账号**即可开始记录自己的学习（新账号数据为空）；
+- 或用演示账号 `demo / 123456` 体验预置数据。
+
+> 给 AI Agent 的配置说明见 [`AGENTS.md`](AGENTS.md)——也可以直接把仓库交给 AI，
+> 说一句「帮我配置这个项目」。
+
+---
+
 ## 一、环境要求
 
 | 依赖 | 版本要求 | 说明 |
@@ -17,13 +49,27 @@
 
 > 说明：本项目 **不使用 MySQL / PostgreSQL**，数据库为 SQLite；向量库为本地 Chroma。
 
-**一键安装串链**（首次克隆后）：
+**一键配置（推荐）**：
+
+```bash
+# Windows
+setup.bat
+# macOS / Linux / Git-Bash
+bash setup.sh
+```
+
+脚本会自动创建后端虚拟环境、安装前后端依赖、生成 `.env` 与随机
+`JWT_SECRET`，并在数据库不存在时写入演示数据。之后运行 `start.bat` /
+`bash start.sh` 即可。
+
+<details>
+<summary>手动配置（可选，逐步执行）</summary>
 
 ```bash
 # 1) 后端依赖
 cd backend && python -m venv .venv && source .venv/Scripts/activate   # Windows cmd: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env    # 然后编辑 .env 填入 LLM/Embedding 的 key（见「九、FAQ」）
+cp .env.example .env    # JWT_SECRET 由启动脚本自动生成；之后按需填 LLM/Embedding 的 key（见「九、FAQ」）
 
 # 2) 前端依赖
 cd ../frontend && npm install
@@ -32,7 +78,14 @@ cd ../frontend && npm install
 cd .. && start.bat      # macOS / Linux / Git-Bash: bash start.sh
 ```
 
+</details>
+
 > 依赖安装失败时：先核对 Python/Node 是否满足上表最低版本；国内网络可为 pip/npm 配置镜像源（如清华 TUNA 镜像）。
+>
+> **首次启动自动化**：`start.bat` / `start.sh` / `backend/run.bat` / `backend/run.sh` 会自动执行
+> `backend/scripts/ensure_dev_env.py`（生成随机 `JWT_SECRET`）并在数据库不存在时运行
+> `python -m app.db.init_db` 写入演示种子数据，无需手工建库。也可手动执行：
+> `cd backend && python scripts/ensure_dev_env.py && python -m app.db.init_db`。
 
 ---
 
@@ -80,8 +133,9 @@ python -m venv .venv
 # 2) 安装依赖
 pip install -r requirements.txt
 
-# 3) 准备环境变量（首次运行可自动从模板生成）
+# 3) 准备环境变量（启动脚本会自动处理，也可手动执行）
 cp .env.example .env      # Windows: copy .env.example .env
+python scripts/ensure_dev_env.py   # 自动生成随机 JWT_SECRET（占位值会导致启动失败）
 
 # 4) 启动服务
 bash run.sh               # Windows: run.bat
