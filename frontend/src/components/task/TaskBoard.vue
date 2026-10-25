@@ -10,10 +10,13 @@
  *     drop（同列短路不发请求，裁定⑮；否则乐观更新）
  *     dragend（无论成败必清理拖拽态与列高亮）
  * - 乐观更新与回滚：落地前暂存快照 → 本地立即移列 →
- *   PATCH /status → 成功用返回对象替换 + emit('changed')（+ done 时
- *   emit('task-done')）；失败按快照回滚原列（错误提示由 request.ts
- *   拦截器统一弹出，本组件 catch 只回滚不重复弹错）。
+ *   PATCH /status → 成功用返回对象替换 + emit('changed')（+ 首次 done 时
+ *   emit('task-done')；review→done 属复盘回流，不重复提示记录）；失败按
+ *   快照回滚原列（错误提示由 request.ts 拦截器统一弹出，本组件 catch
+ *   只回滚不重复弹错）。
  * - PATCH 进行中卡片入 pendingIds 置 drag-disabled，防重复快速拖拽。
+ * - 「待复盘」列额外提供「标记已复盘」按钮（review→done）：拖拽之外
+ *   的可发现入口，与拖拽共用 moveTask（同一状态机、乐观更新与回滚）。
  */
 import { onMounted, reactive, ref } from 'vue'
 
@@ -88,36 +91,53 @@ async function onDrop(target: TaskStatus): Promise<void> {
   if (id == null || from == null) return
   if (target === from) return // 同列落地：无操作、不发请求
 
+  const task = board[from].find((t) => t.id === id)
+  if (!task) return
+  await moveTask(task, from, target)
+}
+
+/**
+ * 异列流转（拖拽 drop 与「标记已复盘」按钮共用）：
+ * 本地乐观移列 → PATCH /status → 成功替换为服务端对象，失败按快照回滚。
+ */
+async function moveTask(task: Task, from: TaskStatus, target: TaskStatus): Promise<void> {
+  if (from === target || pendingIds.has(task.id)) return
   const sourceList = board[from]
-  const idx = sourceList.findIndex((t) => t.id === id)
+  const idx = sourceList.findIndex((t) => t.id === task.id)
   if (idx < 0) return
-  const task = sourceList[idx]
 
   // 快照（乐观更新失败时按原索引回滚原列原位）
-  const snapshot = { task, fromStatus: from, idx }
+  const snapshot = { task: sourceList[idx], fromStatus: from, idx }
 
   // 本地立即移列（乐观更新）
   sourceList.splice(idx, 1)
   board[target].unshift(task)
 
-  pendingIds.add(id)
+  pendingIds.add(task.id)
   try {
-    const updated = await transitionTaskStatus(id, target)
+    const updated = await transitionTaskStatus(task.id, target)
     // 成功：用后端返回对象替换本地行（completed_at 等以服务端为准）
     const list = board[target]
-    const i = list.findIndex((t) => t.id === id)
+    const i = list.findIndex((t) => t.id === task.id)
     if (i >= 0) list[i] = updated
     emit('changed')
-    if (target === 'done') emit('task-done', updated)
+    // 首次完成才提示记录学习；review→done 是复盘回流，不在重复提示
+    // （对齐后端 completed_at 首次语义，裁定⑤）。
+    if (target === 'done' && from !== 'review') emit('task-done', updated)
   } catch {
     // 失败：按快照回滚原列原索引位置（错误提示已由拦截器弹出，此处不重复弹错）
     const list = board[target]
-    const i = list.findIndex((t) => t.id === id)
+    const i = list.findIndex((t) => t.id === task.id)
     if (i >= 0) list.splice(i, 1)
     board[snapshot.fromStatus].splice(snapshot.idx, 0, snapshot.task)
   } finally {
-    pendingIds.delete(id)
+    pendingIds.delete(task.id)
   }
+}
+
+/** 「标记已复盘」按钮：review → done（与拖拽同一路径）。 */
+function onMarkReviewed(task: Task): void {
+  void moveTask(task, 'review', 'done')
 }
 
 /** dragend：无论成败必清理拖拽态与列高亮。 */
@@ -193,6 +213,18 @@ defineExpose({ reload })
             >
               +{{ normalizeKnowledgePoints(t.knowledge_points).length - 3 }}
             </el-tag>
+          </div>
+          <div v-if="col === 'review'" class="card-footer">
+            <el-button
+              type="success"
+              size="small"
+              plain
+              :loading="pendingIds.has(t.id)"
+              :disabled="pendingIds.has(t.id)"
+              @click.stop="onMarkReviewed(t)"
+            >
+              标记已复盘
+            </el-button>
           </div>
         </div>
         <div v-if="board[col].length === 0" class="column-empty">暂无任务</div>
@@ -289,6 +321,11 @@ defineExpose({ reload })
   gap: 4px;
   flex-wrap: wrap;
   margin-top: 6px;
+}
+.card-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 .column-empty {
   text-align: center;

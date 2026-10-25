@@ -3,7 +3,7 @@
  * 学习任务管理页面（P5，design 2.5.1 页面编排）。
  *
  * - 顶部 TaskStatsCards（数值全部来自后端 stats 接口）；
- * - 工具栏：6 项筛选 + 视图切换（list/board，默认 list）+ 新建按钮；
+ * - 工具栏：6 项筛选 + 视图切换（board/list，默认 board）+ 新建按钮；
  * - 列表视图：el-table + 行内状态切换（受控模式，仅合法目标）
  *   + 逾期行标红 + 分页；
  * - 看板视图：TaskBoard（原生 HTML5 拖拽 + 失败回滚）；
@@ -47,7 +47,7 @@ const router = useRouter()
 // 页面状态
 // ---------------------------------------------------------------------------
 const stats = ref<TaskStats | null>(null)
-const viewMode = ref<'list' | 'board'>('list')
+const viewMode = ref<'list' | 'board'>('board')
 
 /** 筛选状态（'' = 全部；与后端 query 参数一一对应）。 */
 const filterStatus = ref<TaskStatus | ''>('')
@@ -233,13 +233,15 @@ async function onDelete(task: Task): Promise<void> {
 // 行内状态切换（受控模式：成功才写本地，失败自动回显原值）
 // ---------------------------------------------------------------------------
 async function onStatusChange(row: Task, target: TaskStatus): Promise<void> {
+  const from = row.status
   try {
     const updated = await transitionTaskStatus(row.id, target)
     row.status = updated.status
     row.completed_at = updated.completed_at
     row.updated_at = updated.updated_at
     void loadStats()
-    if (updated.status === 'done') {
+    // 首次完成才提示记录；review→done 是复盘回流，不重复提示。
+    if (updated.status === 'done' && from !== 'review') {
       void handleTaskDone(updated)
     }
   } catch {
@@ -264,7 +266,8 @@ function onBoardEdit(task: Task): void {
 // 完成任务快捷入口（P6 预留，裁定⑯）
 // ---------------------------------------------------------------------------
 /**
- * 任务经 PATCH 成功流转为 done 后调用（含 review→done）。
+ * 任务经 PATCH 首次流转为 done 后调用（review→done 不调用：复盘回流
+ * 时学习记录已在首次完成时问过，不重复打扰；对齐裁定⑤ completed_at 首次语义）。
  * 取消留在当前页，状态保持已流转的 done；确认则携带 query 跳转 P6 占位页。
  */
 async function handleTaskDone(task: Task): Promise<void> {
@@ -363,8 +366,8 @@ const overdueOptions: { value: '' | 'true' | 'false'; label: string }[] = [
         </div>
         <div class="toolbar-right">
           <el-radio-group v-model="viewMode">
-            <el-radio-button value="list">列表</el-radio-button>
             <el-radio-button value="board">看板</el-radio-button>
+            <el-radio-button value="list">列表</el-radio-button>
           </el-radio-group>
           <el-button type="primary" @click="onCreate">新建任务</el-button>
         </div>
