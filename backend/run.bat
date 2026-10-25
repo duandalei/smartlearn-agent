@@ -17,7 +17,10 @@ REM 解释器优先级：venv -> py -3 -> python
 set "PY=python"
 if exist ".venv\Scripts\python.exe" set "PY=.venv\Scripts\python.exe"
 if not exist ".venv\Scripts\python.exe" (
-    where py >nul 2>&1 && set "PY=py -3"
+    %PY% --version >nul 2>&1
+    if errorlevel 1 (
+        where py >nul 2>&1 && py -3 --version >nul 2>&1 && set "PY=py -3"
+    )
 )
 
 REM 环境自检：缺 .env 时复制模板

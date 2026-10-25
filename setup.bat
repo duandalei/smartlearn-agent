@@ -10,7 +10,10 @@ cd /d "%~dp0"
 set "PY=python"
 if exist "backend\.venv\Scripts\python.exe" set "PY=backend\.venv\Scripts\python.exe"
 if not exist "backend\.venv\Scripts\python.exe" (
-    where py >nul 2>&1 && set "PY=py -3"
+    %PY% --version >nul 2>&1
+    if errorlevel 1 (
+        where py >nul 2>&1 && py -3 --version >nul 2>&1 && set "PY=py -3"
+    )
 )
 
 %PY% --version >nul 2>&1
