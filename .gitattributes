@@ -1,0 +1,7 @@
+# 统一换行符：shell / Python 用 LF，Windows 批处理用 CRLF。
+# 避免 Windows 上 core.autocrlf 配置差异导致 .sh 在 macOS/Linux 上
+# 出现 "bad interpreter: ^M" 或 .bat 在 cmd 中解析异常。
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+*.bat text eol=crlf
