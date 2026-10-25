@@ -291,6 +291,22 @@ def next_week_window(today: date) -> tuple[date, date]:
     return start, start + timedelta(days=6)
 
 
+def current_week_window(today: date) -> tuple[date, date]:
+    """北京今天 → (本周一, 本周日)。
+
+    与 :func:`next_week_window` 的区别：本函数返回**包含今天**的自然周，
+    周一当天返回当天而不是 +7；用于「本周剩余计划」兜底生成。
+
+    Args:
+        today: 基准日期。
+
+    Returns:
+        tuple[date, date]: (本周一, 本周日)。
+    """
+    start = today - timedelta(days=today.weekday())
+    return start, start + timedelta(days=6)
+
+
 def build_rule_candidates(
     overdue_tasks: list[dict[str, Any]],
     due_soon_tasks: list[dict[str, Any]],

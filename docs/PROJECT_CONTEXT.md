@@ -334,7 +334,7 @@ smartlearn/
 
 > **设计意图**：动态学习计划是本项目最核心的差异化功能（对应需求文档第 13、14 章）。每次生成或调整计划都新建一个 version、旧的置 archived，故**不能**用 `tasks`（原地修改）承载——`tasks` 既画不出周视图的时间网格，也无法保留「原计划 → 新计划」的 diff 与回滚能力。
 > **`adjust_reason` 用途**：对应需求文档第 14 章 Agent 必须向用户解释调整原因（如「检测到你本周 Transformer 学习任务未完成，我已经将任务调整到周六下午，并适当减少周六其他低优先级任务。」）。该理由必须落库并在前端 P12 的 diff 视图中与条目改动一并展示，**禁止只存 diff 不存解释**。
-> **多周并存约定**：允许本周与下周的计划同时存在（二者日期区间不重叠）。`GET /api/v1/plans/current` 的语义固定为「返回 `start_date <= 今天 <= end_date` 且 `status=active` 的计划」；生成下周计划时**不得**归档本周尚未结束的计划，避免周视图突然只剩一周。
+> **多周并存约定**：允许本周与下周的计划同时存在（二者日期区间不重叠）。`GET /api/v1/plans/current` 的语义固定为「返回 `start_date <= 今天 <= end_date` 且 `status=active` 的计划」；生成下周计划时**不得**归档本周尚未结束的计划，避免周视图突然只剩一周。`GET /api/v1/plans/upcoming` 返回 `start_date > 今天` 的最近一条 active 计划，供前端回读「已生成但还没开始」的下一周。生成 `current_week` 时周期仍为本周一~本周日（保持 `start_date` 恒为周一的前端 7 列约定），但只对今天及以后的日期排程，过去日期不落条目。
 > **`start_date` / `end_date` 非空约定**：这两个字段同时是 `active` 判定（`start_date <= 今天 <= end_date`）与「重叠计划最多一个」约束的共同依据。一个没有起止日期的学习计划本身没有意义；若允许其可空，重叠判定与当前计划查询将只能在特定数据下才暴露问题，故限定为非空并强制 `end_date >= start_date`。**注意与 6.3 `learning_goals` 区分**：目标的 `start_date` / `end_date` **保持可空不变**，以支持「先建目标、后补时间」；仅计划（`learning_plans`）强制非空。
 
 ### 6.5 learning_plan_items（计划条目）
@@ -560,7 +560,7 @@ smartlearn/
 | Knowledge Base | `POST /api/v1/knowledge/upload`、`GET /api/v1/knowledge/items`、`DELETE /api/v1/knowledge/items/{id}`、`POST /api/v1/knowledge/search` |
 | AI 问答（/ask） | `POST /api/v1/chat/qa`（SSE 流式问答，事件顺序 sources → delta → done/error）、`GET /api/v1/chat/history`（历史问答分页，仅本人可见） |
 | AI Agent | `POST /api/v1/agent/conversations`、`GET /api/v1/agent/conversations`、`PATCH /api/v1/agent/conversations/{id}`（重命名）、`DELETE /api/v1/agent/conversations/{id}`（删除）、`GET /api/v1/agent/conversations/{id}/messages`、`POST /api/v1/agent/chat`（SSE 流式） |
-| Plan（`/plans`） | `GET /api/v1/plans`（历史版本列表）、`GET /api/v1/plans/current`（当前 active 计划 + 条目，供周视图课表）、`POST /api/v1/plans/generate`（生成新版本）、`POST /api/v1/plans/{id}/adjust`（调整并生成新版本，`parent_plan_id` 指向原版本，写入 `adjust_reason`）、`GET /api/v1/plans/{id}/diff`（对比 `parent_plan_id`，展示「原计划 → 新计划」+ 调整原因） |
+| Plan（`/plans`） | `GET /api/v1/plans`（历史版本列表）、`GET /api/v1/plans/current`（当前 active 计划 + 条目，供周视图课表）、`GET /api/v1/plans/upcoming`（最近一条 `start_date > 今天` 的 active 计划 + 条目，用于回读已生成未开始的下周计划）、`POST /api/v1/plans/generate`（生成新版本；`target` 可选：缺省 `next_week`，`current_week` 生成本周剩余）、`POST /api/v1/plans/{id}/adjust`（调整并生成新版本，`parent_plan_id` 指向原版本，写入 `adjust_reason`）、`GET /api/v1/plans/{id}/diff`（对比 `parent_plan_id`，展示「原计划 → 新计划」+ 调整原因） |
 | Reports | `GET /api/v1/reports`、`GET /api/v1/reports/{id}`、`POST /api/v1/reports/generate` |
 
 ### 7.3 Axios 封装与拦截器约定（`src/api/request.ts`）

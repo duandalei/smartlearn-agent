@@ -24,6 +24,7 @@ from app.analytics.scheduler import (
     ScheduleInput,
     build_rule_candidates,
     build_week_schedule,
+    current_week_window,
     next_week_window,
 )
 
@@ -40,6 +41,12 @@ def _week_of(monday: date) -> list[date]:
     return [monday + timedelta(days=i) for i in range(7)]
 
 
+def _this_monday() -> date:
+    """北京今天 → 本周一。"""
+    today = datetime.now(TZ).date()
+    return today - timedelta(days=today.weekday())
+
+
 # ---------------------------------------------------------------------------
 # E 组：scheduler 引擎单测（纯函数直测）
 # ---------------------------------------------------------------------------
@@ -53,6 +60,16 @@ def test_engine_next_week_window() -> None:
     monday = date(2026, 11, 2)
     start2, end2 = next_week_window(monday)
     assert (start2, end2) == (date(2026, 11, 9), date(2026, 11, 15))
+
+
+def test_engine_current_week_window() -> None:
+    """本周周期推导：周一 → 当天~周日；周四 → 本周一~周日；周日 → 本周一~周日。"""
+    monday = date(2026, 10, 26)
+    assert current_week_window(monday) == (monday, monday + timedelta(days=6))
+    thursday = date(2026, 10, 29)
+    assert current_week_window(thursday) == (monday, monday + timedelta(days=6))
+    sunday = date(2026, 11, 1)
+    assert current_week_window(sunday) == (monday, sunday)
 
 
 def test_engine_capacity_and_no_conflict() -> None:
@@ -758,3 +775,46 @@ def test_g10_transaction_atomicity(
         assert agent_tasks == []  # 无半截任务
         items = db.execute(select(LearningPlanItem)).scalars().all()
         assert items == []
+
+
+def test_g11_generate_current_week_remaining_days(
+    app_client: Any, user_a: dict[str, Any], demo_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """本周兜底：周期为本周一~本周日，只排今天及以后；周五已过不注入休息条目。"""
+    _install_plan_llm(
+        monkeypatch,
+        lambda _m: _candidates_json(_five_candidates(demo_env["overdue_id"], count=12)),
+    )
+    resp = app_client.post(
+        "/api/v1/plans/generate",
+        headers=user_a["headers"],
+        json={"target": "current_week"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+
+    today = datetime.now(TZ).date()
+    this_monday = _this_monday()
+    this_sunday = this_monday + timedelta(days=6)
+    friday = this_monday + timedelta(days=4)
+
+    assert data["plan"]["start_date"] == this_monday.isoformat()
+    assert data["plan"]["end_date"] == this_sunday.isoformat()
+    assert data["items"]
+    assert all(item["plan_date"] >= today.isoformat() for item in data["items"])
+
+    friday_items = [i for i in data["items"] if i["plan_date"] == friday.isoformat()]
+    if friday >= today:
+        assert len(friday_items) == 1
+        assert friday_items[0]["topic"] == "休息 / 复习"
+        assert friday_items[0]["start_time"] is None
+    else:
+        assert friday_items == []
+
+    per_day: dict[str, int] = {}
+    for item in data["items"]:
+        if item["estimated_minutes"] is not None:
+            per_day[item["plan_date"]] = per_day.get(item["plan_date"], 0) + item[
+                "estimated_minutes"
+            ]
+    assert all(v <= 90 for v in per_day.values()), per_day

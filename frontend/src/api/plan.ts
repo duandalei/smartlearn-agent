@@ -2,7 +2,8 @@
  * 学习计划接口封装（P13 批次 1；design 2.2.1 / 2.2.2-(1)~(5)）。
  *
  * - GET  /plans/current           当前生效计划及条目（data=null 为空态，非 404）
- * - POST /plans/generate          生成下一个完整自然周计划（零字段体 {}）
+ * - GET  /plans/upcoming          最近一条尚未开始的生效计划及条目（同构空态）
+ * - POST /plans/generate          生成计划（target 可选：next_week / current_week）
  * - POST /plans/{id}/adjust       动态调整（零字段体 {}，后端即时生效）
  * - GET  /plans/{id}/diff         调整记录回看（首版返回空结构，非错误）
  * - GET  /learning-plan-items     条目分页（无 plan_id 参数，客户端过滤用）
@@ -20,6 +21,7 @@ import type {
   PlanCurrent,
   PlanDiff,
   PlanGenerateResult,
+  PlanGenerateTarget,
   PlanItem,
 } from '@/types/plan'
 
@@ -36,17 +38,35 @@ export function fetchCurrentPlan(): Promise<PlanCurrent | null> {
 }
 
 /**
- * 生成下一个完整自然周计划（LLM 失败自动降级规则引擎，降级不是错误，
+ * 查询最近一条尚未开始的生效计划（start_date > 今天，active）及条目。
+ *
+ * 用于回读「已生成但还没开始」的下周计划；空态返回 null（HTTP 200 +
+ * data=null，非 404），调用方不得以 catch 处理空态。
+ *
+ * @returns {plan, items} 或 null。
+ */
+export function fetchUpcomingPlan(): Promise<PlanCurrent | null> {
+  return request.get('/plans/upcoming') as unknown as Promise<PlanCurrent | null>
+}
+
+/**
+ * 生成学习计划（LLM 失败自动降级规则引擎，降级不是错误，
  * 由响应 generated_by 字段区分，spec §5.2.1 规则 3）。
+ *
+ * target 缺省 next_week（保持原「下一个完整自然周」语义）；current_week
+ * 生成本周剩余时间（周期仍为本周一~本周日，只排今天及以后）。
  *
  * 后置条件（spec §5.2.1 规则 1）：视图层以响应 {plan, items, unplaced_tasks,
  * generated_by} 直接渲染会话态，不得重查 current。同周期重生成会归档旧版
- * （规则 4，真实副作用，视图层必须以 loading 锁防重复提交）。
+ * （规则 4，真实副作用；视图层必须先二次确认并以 loading 锁防重复提交）。
  *
+ * @param target 目标周期，默认 next_week。
  * @returns 生成结果（含未排入任务清单）。
  */
-export function generatePlan(): Promise<PlanGenerateResult> {
-  return request.post('/plans/generate', {}) as unknown as Promise<PlanGenerateResult>
+export function generatePlan(
+  target: PlanGenerateTarget = 'next_week',
+): Promise<PlanGenerateResult> {
+  return request.post('/plans/generate', { target }) as unknown as Promise<PlanGenerateResult>
 }
 
 /**

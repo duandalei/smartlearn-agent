@@ -55,6 +55,7 @@ from app.analytics.scheduler import (
     ScheduledItem,
     build_rule_candidates,
     build_week_schedule,
+    current_week_window,
     next_week_window,
 )
 from app.core.response import CODE_INTERNAL_ERROR, BizException
@@ -229,8 +230,14 @@ def _plan_prompt(
     weak_points: list[dict[str, Any]],
     task_pool: list[dict[str, Any]],
     interests: list[str],
+    period_label: str = "下一周",
 ) -> list[ChatMessage]:
-    """构造规划 LLM 消息（候选来源 JSON + 「禁止输出日期时间」硬指令）。"""
+    """构造规划 LLM 消息（候选来源 JSON + 「禁止输出日期时间」硬指令）。
+
+    Args:
+        period_label: 目标周期中文标签（「下一周」/「本周剩余时间」），
+            仅影响提示词措辞，不改变输出 JSON 契约。
+    """
     pool_desc = [
         {
             "id": task["id"],
@@ -245,7 +252,7 @@ def _plan_prompt(
         for w in weak_points[:6]
     ]
     user_content = (
-        "请为用户挑选下一周的学习候选。\n\n"
+        f"请为用户挑选{period_label}的学习候选。\n\n"
         f"### 候选来源（只读参考）\n"
         f"- 每日可学习时长：{capacity} 分钟\n"
         f"- 学习目标知识树叶子：{json.dumps(roadmap_leaves[:12], ensure_ascii=False)}\n"
@@ -270,7 +277,7 @@ def _plan_prompt(
         ChatMessage(
             role="system",
             content=(
-                "你是学习计划规划助手，职责是挑选下一周值得学习的知识点与任务"
+                f"你是学习计划规划助手，职责是挑选{period_label}值得学习的知识点与任务"
                 "（学什么、学多久、优先级），不负责具体时间安排。"
             ),
         ),
@@ -283,17 +290,28 @@ def _plan_prompt(
 # ---------------------------------------------------------------------------
 
 
-async def generate_plan(db: Session, user_id: int) -> dict[str, Any]:
-    """生成下一个完整自然周学习计划（HTTP ① 与工具 T2 共用入口）。
+async def generate_plan(
+    db: Session,
+    user_id: int,
+    target: Literal["next_week", "current_week"] = "next_week",
+) -> dict[str, Any]:
+    """生成学习计划（HTTP ① 与工具 T2 共用入口）。
 
     混合模式（O4）：规划 LLM 决定「学什么 / 学多久 / 优先级」；
     确定性排程引擎决定「周几几点 / 容量 / 冲突 / 休息日」。LLM
     失败（超时 / 服务失败 / 两次解析失败）自动降级纯规则候选
     （``generated_by="rules"``），不报错、不阻塞。
 
+    ``target`` 语义（缺省 ``next_week``，逐字节保持原行为）：
+
+    - ``next_week``：下一个完整自然周（下周一~下周日），7 天全量排程；
+    - ``current_week``：本周兜底（本周一~本周日），只对今天及以后
+      的日期排程，过去日期不落任何条目（周五已过则不注入休息条目）。
+
     Args:
         db: 数据库会话。
         user_id: 当前用户 id（服务端注入）。
+        target: 目标周期（``next_week`` / ``current_week``）。
 
     Returns:
         dict[str, Any]: ``PlanGenerateOut`` 结构——{plan, items,
@@ -304,8 +322,19 @@ async def generate_plan(db: Session, user_id: int) -> dict[str, Any]:
     """
     now = _beijing_now()
     today = now.date()
-    start, end = next_week_window(today)
-    week_days = _week_days_of(start, end)
+    rest_day: date | None
+    if target == "current_week":
+        start, end = current_week_window(today)
+        schedule_days = [day for day in _week_days_of(start, end) if day >= today]
+        rest_day = start + timedelta(days=4)
+        if rest_day < today:
+            rest_day = None
+        period_label = "本周剩余时间"
+    else:
+        start, end = next_week_window(today)
+        schedule_days = _week_days_of(start, end)
+        rest_day = start + timedelta(days=4)
+        period_label = "下一周"
 
     # 1. 输入聚合（只读四查询；唯一性第一道保证：任务池按 id 天然去重）
     profile = get_profile_by_user_id(db, user_id)
@@ -359,7 +388,9 @@ async def generate_plan(db: Session, user_id: int) -> dict[str, Any]:
     # 2. 候选获取三分支（决策 A7：首调 + 解析失败重试共享同一 30s 总窗）
     candidates: list[ScheduleCandidate] | None = None
     generated_by = "rules"
-    messages = _plan_prompt(capacity, roadmap_leaves, weak_points, task_pool, interests)
+    messages = _plan_prompt(
+        capacity, roadmap_leaves, weak_points, task_pool, interests, period_label
+    )
     started = asyncio.get_event_loop().time()
     try:
         candidates = await asyncio.wait_for(
@@ -389,7 +420,7 @@ async def generate_plan(db: Session, user_id: int) -> dict[str, Any]:
         ScheduleInput(
             candidates=candidates,
             daily_capacity_minutes=capacity,
-            week_days=week_days,
+            week_days=schedule_days,
             now=now,
         )
     )
@@ -402,6 +433,7 @@ async def generate_plan(db: Session, user_id: int) -> dict[str, Any]:
         start=start,
         end=end,
         schedule=schedule,
+        rest_day=rest_day,
         generated_by=generated_by,
         capacity=capacity,
     )
@@ -440,11 +472,17 @@ def _persist_generated_plan(
     start: date,
     end: date,
     schedule: Any,
+    rest_day: date | None,
     generated_by: str,
     capacity: int,
 ) -> dict[str, Any]:
     """落库事务：同周期判定 → 归档+幽灵清理 → 任务落库（OP1 双分支）
-    → 计划头 → 条目回填（唯一性断言兜底）→ 单 commit。"""
+    → 计划头 → 条目回填（唯一性断言兜底）→ 单 commit。
+
+    Args:
+        rest_day: 休息条目的日期；``None`` 表示本周期不注入休息条目
+            （本周兜底生成时周五已过）。
+    """
     actives = db.execute(
         select(LearningPlan).where(
             LearningPlan.user_id == user_id,
@@ -556,9 +594,10 @@ def _persist_generated_plan(
     db.flush()
 
     # (5) 建 items：周五注入「休息 / 复习」条目（task_id 全 None——SQLite
-    #     唯一索引对 NULL 不判重）；任务唯一性第三道保证：落库前显式断言
-    rest_day = start + timedelta(days=4)
-    item_rows.append((rest_day, None, None, "休息 / 复习", None, None, None))
+    #     唯一索引对 NULL 不判重）；任务唯一性第三道保证：落库前显式断言。
+    #     本周兜底生成且周五已过时 rest_day=None，不注入过去日期的休息条目。
+    if rest_day is not None:
+        item_rows.append((rest_day, None, None, "休息 / 复习", None, None, None))
 
     task_ids_seen: list[int] = [t.id for (_, _, _, _, t, _, _) in item_rows if t is not None]
     if len(task_ids_seen) != len(set(task_ids_seen)):
@@ -801,6 +840,36 @@ def _ordered_items(plan: LearningPlan) -> list[LearningPlanItem]:
 def get_current_plan(db: Session, user_id: int) -> dict[str, Any] | None:
     """当前 active 计划及条目（HTTP ② 与工具 T1；空态返回 None 非 404）。"""
     plan = _current_active_plan(db, user_id)
+    if plan is None:
+        return None
+    return {
+        "plan": _plan_out(plan),
+        "items": [_item_out(item) for item in _ordered_items(plan)],
+    }
+
+
+def _upcoming_active_plan(db: Session, user_id: int) -> LearningPlan | None:
+    """定位最近一条尚未开始的 active 计划（start_date > 今天）。"""
+    today = _beijing_now().date()
+    return db.execute(
+        select(LearningPlan)
+        .where(
+            LearningPlan.user_id == user_id,
+            LearningPlan.status == PlanStatus.ACTIVE,
+            LearningPlan.start_date > today,
+        )
+        .order_by(LearningPlan.start_date.asc(), LearningPlan.version.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def get_upcoming_plan(db: Session, user_id: int) -> dict[str, Any] | None:
+    """最近一条尚未开始的 active 计划及条目（空态返回 None 非 404）。
+
+    与 :func:`get_current_plan` 的区别是筛选 ``start_date > 今天``，
+    用于回读「已生成但还没开始」的下周计划；出参与 current 同构。
+    """
+    plan = _upcoming_active_plan(db, user_id)
     if plan is None:
         return None
     return {

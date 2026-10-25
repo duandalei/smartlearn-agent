@@ -62,30 +62,37 @@ def list_plans(
     )
 
 
-@router.post("/generate", summary="生成下一个完整自然周学习计划")
+@router.post("/generate", summary="生成学习计划（默认下一周；可选本周剩余）")
 async def generate_plan(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     payload: PlanGenerateIn,
 ) -> dict[str, Any]:
-    """生成下周一~下周日的学习计划（混合模式：LLM 选内容 + 引擎排时）。
+    """生成学习计划（混合模式：LLM 选内容 + 引擎排时）。
 
-    周期语义：恒为**下一个完整自然周**；同周期已有 active 计划时
-    归档旧版重新生成（幽灵任务清理）；与既有 active 部分 overlap
-    返回 400 + code=1007。规划 LLM 失败自动降级纯规则模式
-    （generated_by="rules"），仍返回可用计划。
+    ``target`` 语义：
+
+    - ``next_week``（缺省）：下周一~下周日，保持原有行为；
+    - ``current_week``：本周一~本周日，只排今天及以后的日期
+      （本周兜底，过去日期不落条目）。
+
+    同周期已有 active 计划时归档旧版重新生成（幽灵任务清理）；
+    与既有 active 部分 overlap 返回 400 + code=1007。规划 LLM 失败
+    自动降级纯规则模式（generated_by="rules"），仍返回可用计划。
 
     Args:
         db: 数据库会话（依赖注入）。
         current_user: 当前登录用户（依赖注入）。
-        payload: 请求体（零字段）。
+        payload: 请求体（target 可选，默认 next_week）。
 
     Returns:
         dict[str, Any]: 统一响应体，data 为
         {plan, items, unplaced_tasks, generated_by}。
     """
     return success(
-        data=await plan_service.generate_plan(db, current_user.id)
+        data=await plan_service.generate_plan(
+            db, current_user.id, target=payload.target
+        )
     )
 
 
@@ -108,6 +115,28 @@ def get_current_plan(
     """
     return success(
         data=plan_service.get_current_plan(db, current_user.id)
+    )
+
+
+@router.get("/upcoming", summary="最近一条尚未开始的生效学习计划及条目")
+def get_upcoming_plan(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, Any]:
+    """获取 ``start_date > 今天`` 且 active 的最近一条计划及条目。
+
+    用于回读「已生成但还没开始」的下周计划。空态语义与 /current
+    对齐：无匹配返回 200 且 data=null（**非 404**）。
+
+    Args:
+        db: 数据库会话（依赖注入）。
+        current_user: 当前登录用户（依赖注入）。
+
+    Returns:
+        dict[str, Any]: 统一响应体，data 为 {plan, items} 或 null。
+    """
+    return success(
+        data=plan_service.get_upcoming_plan(db, current_user.id)
     )
 
 

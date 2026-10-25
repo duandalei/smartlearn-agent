@@ -61,9 +61,16 @@ class PlanItemOut(BaseModel):
 
 
 class PlanGenerateIn(BaseModel):
-    """POST /plans/generate 请求体（零字段，防 user_id 注入）。"""
+    """POST /plans/generate 请求体。
+
+    ``target`` 缺省为 ``next_week``（保持原「生成下一个完整自然周」语义）；
+    ``current_week`` 生成本周剩余时间（周期仍为本周一~本周日，只排今天
+    及以后）。``user_id`` 仍不可注入。
+    """
 
     model_config = ConfigDict(extra="forbid")
+
+    target: Literal["next_week", "current_week"] = "next_week"
 
 
 class PlanAdjustIn(BaseModel):

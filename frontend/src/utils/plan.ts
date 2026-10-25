@@ -47,6 +47,51 @@ function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
 
+/** 'YYYY-MM-DD' → 本地 Date（不做 UTC 转换）。 */
+export function parseLocalDate(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+/** 'YYYY-MM-DD' 加/减天数（跨月/跨年由 Date 归一化）。 */
+export function addDays(value: string, days: number): string {
+  const d = parseLocalDate(value)
+  return localDateStr(new Date(d.getFullYear(), d.getMonth(), d.getDate() + days))
+}
+
+/** 本周自然周窗口（周一 ~ 周日）。 */
+export function currentWeekWindow(today: string): { start: string; end: string } {
+  const offset = (parseLocalDate(today).getDay() + 6) % 7 // 周一=0
+  const start = addDays(today, -offset)
+  return { start, end: addDays(start, 6) }
+}
+
+/** 本周剩余窗口（今天 ~ 本周日），用于「生成本周计划」按钮文案。 */
+export function remainingCurrentWindow(today: string): { start: string; end: string } {
+  return { start: today, end: currentWeekWindow(today).end }
+}
+
+/** 下周自然周窗口（下周一 ~ 下周日）。 */
+export function nextWeekWindow(today: string): { start: string; end: string } {
+  const start = addDays(currentWeekWindow(today).start, 7)
+  return { start, end: addDays(start, 6) }
+}
+
+/** 计划相对今天的周归属（current 覆盖今天 / next 下周 / future 更远）。 */
+export function weekKindOf(
+  plan: Plan,
+  today: string,
+): 'current' | 'next' | 'future' {
+  if (plan.start_date <= today && today <= plan.end_date) return 'current'
+  if (plan.start_date === nextWeekWindow(today).start) return 'next'
+  return 'future'
+}
+
+/** 本周是否还有可排期天数（周日返回 false，周一~周六 true）。 */
+export function canGenerateCurrentWeek(today: string): boolean {
+  return parseLocalDate(today).getDay() !== 0
+}
+
 /**
  * 由 plan.start_date 推导 7 列列头（design 2.2.2-(9)）。
  *

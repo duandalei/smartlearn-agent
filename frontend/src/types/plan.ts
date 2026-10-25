@@ -54,11 +54,18 @@ export interface UnplacedTask {
   reason: string
 }
 
-/** GET /plans/current 出参（data 为 null = 空态，非错误；spec §6.4-2 同构）。 */
+/**
+ * GET /plans/current 出参（data 为 null = 空态，非错误；spec §6.4-2 同构）。
+ *
+ * GET /plans/upcoming 复用同构出参：{plan, items} 或 null。
+ */
 export interface PlanCurrent {
   plan: Plan
   items: PlanItem[]
 }
+
+/** 计划生成目标周期（POST /plans/generate 的 target 字段）。 */
+export type PlanGenerateTarget = 'next_week' | 'current_week'
 
 /**
  * POST /plans/generate 出参（对齐后端 PlanGenerateOut；spec §6.4）。
@@ -149,13 +156,13 @@ export type ItemHighlight = 'moved' | 'added' | 'removed'
 /**
  * 会话态渲染数据源（design D2：周视图唯一数据来源）。
  *
- * origin 记录来源（current 首屏基线 / generate 生成 / adjust 调整后切换），
- * 会话态不持久——页面刷新自然销毁回 current（spec 裁定 #1）。
+ * origin 记录来源（current 本周基线 / upcoming 下周基线 / generate 生成 /
+ * adjust 调整后切换）；计划数据本身不持久化，页面重进仍从接口读取。
  */
 export interface SessionPlan {
   plan: Plan
   items: PlanItem[]
-  origin: 'current' | 'generate' | 'adjust'
+  origin: 'current' | 'upcoming' | 'generate' | 'adjust'
 }
 
 /**
