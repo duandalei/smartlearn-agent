@@ -1,6 +1,6 @@
 # AGENTS.md — 给 AI Agent 的项目配置说明
 
-本文件面向被要求「帮我配置 / 运行这个项目」的 AI Agent。按顺序执行即可，
+本文件面向被要求「帮我配置 / 运行这个项目」的 AI Agent；项目仅支持 Windows 10 / 11。按顺序执行即可，
 无需先阅读其他文档。
 
 项目是 **Python FastAPI + Vue 3** 的单机应用，数据存 SQLite，不需要
@@ -12,7 +12,7 @@ MySQL / PostgreSQL / Redis。
 
 1. 一条命令装好前后端依赖与环境变量；
 2. 运行一键启动脚本；
-3. 浏览器打开 http://localhost:5173 ，注册账号后即可记录自己的学习。
+3. 浏览器打开 http://localhost:5173 ，直接进入首页（本地单用户，无需登录），即可记录自己的学习。
 
 ## 环境要求
 
@@ -30,11 +30,6 @@ Windows（cmd / PowerShell）：
 setup.bat
 ```
 
-macOS / Linux / Git-Bash：
-
-```bash
-bash setup.sh
-```
 
 也可以直接调用底层脚本：
 
@@ -47,8 +42,8 @@ python scripts/setup_env.py
 1. 校验 Python / Node 版本；
 2. 创建 `backend/.venv`（已存在则复用）；
 3. `pip install -r backend/requirements.txt`；
-4. 生成 `backend/.env` 与随机 `JWT_SECRET`；
-5. 数据库不存在时执行 `python -m app.db.init_db` 写入演示种子；
+4. 准备 `backend/.env`；
+5. 数据库不存在时执行 `python -m app.db.init_db` 初始化数据库（建表 + 本地用户）；
 6. `npm ci`（无 lock 时 `npm install`）安装前端依赖。
 
 **成功标志**：最后输出「环境配置完成」且退出码为 0。
@@ -62,21 +57,15 @@ Windows：
 start.bat
 ```
 
-macOS / Linux / Git-Bash：
-
-```bash
-bash start.sh
-```
 
 启动后：
 
 - 后端 http://localhost:8000 ，健康检查 `GET /health` 返回 `{"code":0,...}`；
   接口文档 http://localhost:8000/docs
 - 前端 http://localhost:5173
-- 演示账号 `demo / 123456`；也可在登录页直接注册新账号（新账号数据为空，
-  可自行创建目标 / 任务并记录学习）
+- 本地单用户，打开前端即进入首页，没有登录 / 注册页。
 
-启动脚本会自动补齐：`.env` 缺失时生成、`JWT_SECRET` 为占位值时重写、
+启动脚本会自动补齐：`.env` 缺失时复制模板、
 数据库不存在时执行 `init_db`。
 
 ## 配置 LLM / Embedding（可选）
@@ -99,8 +88,8 @@ EMBEDDING_MODEL=
 ## 验证清单
 
 1. `GET http://localhost:8000/health` 返回 `code=0`；
-2. 前端 5173 能打开登录页；
-3. 注册新账号成功并进入首页；
+2. 前端 5173 能打开首页（没有登录页）；
+3. 直接进入主布局，能创建目标 / 任务并记录学习；
 4. 「学习记录」→「记录学习」能保存一条记录；
 5. 刷新页面后记录仍在（SQLite 已落库）。
 
@@ -108,8 +97,6 @@ EMBEDDING_MODEL=
 
 - **Python / Node 版本过低**：按上表升级后重跑配置脚本；
 - **pip / npm 网络失败**：配置国内镜像源后重试；
-- **端口被占用**：`netstat -ano | findstr :8000`（Windows）或
-  `lsof -i :8000`（macOS/Linux），结束后端进程后重启；
-- **数据库想恢复干净演示状态**：先停后端，再执行
-  `cd backend && python scripts/reset_demo_data.py --yes`；
+- **端口被占用**：`netstat -ano | findstr :8000`，结束后端进程后重启；
+- **想清空本地数据**：先停后端，删除 `data/smartlearn.db` 与 `data/chroma/` 后重启（会清空记录）；
 - **不要提交**：`backend/.env`、`data/*.db`、`.venv/`、`node_modules/`。

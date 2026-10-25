@@ -7,7 +7,13 @@ REM ==========================================================================
 setlocal
 cd /d "%~dp0"
 
-python --version >nul 2>&1
+set "PY=python"
+if exist "backend\.venv\Scripts\python.exe" set "PY=backend\.venv\Scripts\python.exe"
+if not exist "backend\.venv\Scripts\python.exe" (
+    where py >nul 2>&1 && set "PY=py -3"
+)
+
+%PY% --version >nul 2>&1
 if errorlevel 1 (
     echo [错误] 未检测到 Python。请安装 Python 3.10+ 并勾选 "Add Python to PATH"。
     echo 下载地址: https://www.python.org/downloads/
@@ -15,7 +21,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-python scripts\setup_env.py %*
+%PY% scripts\setup_env.py %*
 if errorlevel 1 (
     echo.
     echo [失败] 环境配置未完成，请查看上方错误信息并按提示处理。

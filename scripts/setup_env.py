@@ -1,4 +1,4 @@
-"""一键配置开发环境（Windows / macOS / Linux 通用）。
+"""一键配置开发环境（Windows 专用）。
 
 用法::
 
@@ -6,8 +6,8 @@
     python scripts/setup_env.py --skip-db  # 只装依赖，不初始化数据库
 
 流程：校验 Python / Node → 创建 backend/.venv → 安装后端依赖 →
-生成 backend/.env 与随机 JWT_SECRET → 数据库不存在时写入演示种子 →
-安装前端依赖。成功后运行 start.bat（Windows）或 bash start.sh 启动。
+生成 backend/.env → 数据库不存在时初始化数据库 →
+安装前端依赖。成功后运行 start.bat 启动。
 
 脚本只依赖标准库；每一步失败都会打印可执行的修复提示并返回非零，
 方便用户或 AI Agent 直接按提示处理。
@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import shutil
 import subprocess
@@ -36,10 +35,8 @@ MIN_NODE_MAJOR: int = 18
 
 
 def _venv_python() -> Path:
-    """当前平台下 venv 解释器路径。"""
-    if os.name == "nt":
-        return VENV / "Scripts" / "python.exe"
-    return VENV / "bin" / "python"
+    """Windows 虚拟环境解释器路径。"""
+    return VENV / "Scripts" / "python.exe"
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -94,9 +91,7 @@ def _check_node() -> bool:
 
 
 def _npm_binary() -> str | None:
-    if os.name == "nt":
-        return shutil.which("npm.cmd") or shutil.which("npm")
-    return shutil.which("npm")
+    return shutil.which("npm.cmd") or shutil.which("npm")
 
 
 def _ensure_venv() -> Path:
@@ -127,7 +122,7 @@ def _install_backend(python: Path) -> None:
 
 
 def _prepare_env(python: Path) -> None:
-    print("[配置] 生成 backend/.env 与随机 JWT_SECRET")
+    print("[配置] 准备 backend/.env")
     _run([str(python), str(BACKEND / "scripts" / "ensure_dev_env.py")], cwd=BACKEND)
 
 
@@ -135,7 +130,7 @@ def _init_db(python: Path) -> None:
     if DB_PATH.exists():
         print(f"[检查] 数据库已存在，跳过初始化：{DB_PATH}")
         return
-    print("[初始化] 未检测到数据库，写入演示种子数据")
+    print("[初始化] 未检测到数据库，初始化数据库（建表 + 本地用户）")
     _run([str(python), "-m", "app.db.init_db"], cwd=BACKEND)
 
 
@@ -154,7 +149,7 @@ def _install_frontend() -> None:
 
 
 def _print_summary() -> None:
-    start_cmd = "start.bat" if os.name == "nt" else "bash start.sh"
+    start_cmd = "start.bat"
     print(
         "\n"
         "==============================================\n"
@@ -163,7 +158,7 @@ def _print_summary() -> None:
         f" 启动项目: {start_cmd}\n"
         " 前端地址: http://localhost:5173\n"
         " 后端地址: http://localhost:8000（接口文档 /docs）\n"
-        " 演示账号: demo / 123456（可直接注册新账号）\n"
+        " 本地单用户：打开前端即可使用，无需登录\n"
         "\n"
         " 说明: LLM / Embedding 未配置时，核心功能（任务、记录、计划查看）\n"
         "       仍可正常使用；AI 问答与在线向量化需要填写 backend/.env。\n"
@@ -173,7 +168,7 @@ def _print_summary() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="配置 SmartLearn 开发环境")
     parser.add_argument(
-        "--skip-db", action="store_true", help="跳过演示数据库初始化（启动时会自动补）"
+        "--skip-db", action="store_true", help="跳过数据库初始化（启动时会自动补）"
     )
     args = parser.parse_args()
 

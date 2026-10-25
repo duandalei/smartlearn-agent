@@ -31,20 +31,11 @@ frontend/.env.*.local
 # ---- IDE / 系统 ----
 .idea/
 .vscode/
-.DS_Store
 Thumbs.db
 
-# ---- 运行时数据（保留 4 篇演示上传文件，其余不进库）----
+# ---- 运行时数据（不进版本库）----
 data/*
 !data/.gitkeep
-!data/uploads/
-data/uploads/*
-!data/uploads/1/
-data/uploads/1/*
-!data/uploads/1/1_ml_basics.md
-!data/uploads/1/2_linear_algebra_notes.md
-!data/uploads/1/3_probability_formulas.md
-!data/uploads/1/4_ds_cheatsheet.md
 
 # 构建产物 / 缓存
 *.log
