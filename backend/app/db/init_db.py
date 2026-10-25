@@ -673,7 +673,9 @@ def _seed_plan(
 ) -> None:
     """写入本周学习计划（v1，active，agent 生成）与 8 条计划条目。
 
-    条目状态随执行日自洽：plan_date 早于 today 的置 done，否则 planned。
+    条目完成态与关联任务一致：任务 done/review → 条目 done，其余
+    （含关联任务未完成、休息条目）置 planned——避免任务页与计划页
+    互相矛盾（出参合并只升级不降级，种子必须一开始就自洽）。
 
     Args:
         db: 数据库会话。
@@ -731,7 +733,11 @@ def _seed_plan(
                 estimated_minutes=minutes,
                 priority=priority_map[priority],
                 status=(
-                    PlanItemStatus.DONE if plan_date < today else PlanItemStatus.PLANNED
+                    PlanItemStatus.DONE
+                    if task_key is not None
+                    and tasks[task_key].status
+                    in (TaskStatus.DONE, TaskStatus.REVIEW)
+                    else PlanItemStatus.PLANNED
                 ),
             )
         )

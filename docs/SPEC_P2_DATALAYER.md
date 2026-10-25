@@ -341,7 +341,7 @@ pool --> caller : 可用 Session
    | courses | 3 | 如：机器学习、Python 程序设计、数据结构与算法分析；含教师姓名与学期（2025-2026-1） |
    | learning_goals | 5 | 含「掌握机器学习」主线目标（`roadmap` 为 3~4 层知识树 JSON）；status 覆盖 active（≥3）/ completed（≥1）/ archived（≥1） |
    | learning_plans | 1 | `active`、`version=1`、`source=agent`、起止日期覆盖执行日所在周 |
-   | learning_plan_items | 7~10 | 属上述计划；`plan_date` 为本周日期、含明确 `start_time`/`end_time`（联合唯一不冲突）；topic 与任务知识点呼应（如「线性代数：特征值」） |
+   | learning_plan_items | 7~10 | 属上述计划；`plan_date` 为本周日期、含明确 `start_time`/`end_time`（联合唯一不冲突）；topic 与任务知识点呼应（如「线性代数：特征值」）；完成态与关联任务一致（任务 done/review → done，其余 planned；休息条目 planned） |
    | tasks | 22 | 四种 status 各 ≥1（建议 todo 7 / in_progress 4 / done 9 / review 2）；deadline 有近有远且 ≥3 个已逾期（早于执行日）；priority 三档各 ≥1；source 覆盖 manual 与 agent；`knowledge_points` 为真实知识点数组；除「休息 / 复习」外的计划条目均有关联任务 |
    | learning_records | 30 | `study_date` 为执行日前 30 天连续逐日；`duration_minutes` 每天 30~180（0.5~3 小时）；覆盖 Python / 机器学习 / 数学 / 算法四类知识点；**最近 5 天时长严格递减**（由远及近逐日减少，用于演示学习风险预警）；`mastery_level` 取 0–100 |
    | knowledge_items | 3~5 | 全部 `scope=public`、`user_id=NULL`、`status=indexed`；主题如机器学习基础 / 线性代数要点 / 概率论公式表 / 数据结构速查；`source_type` 覆盖 ≥3 种 |
