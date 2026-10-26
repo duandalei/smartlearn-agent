@@ -171,6 +171,8 @@ start.bat
 
 先启动后端（8000），再启动前端（5173）。
 
+> 已安装 Windows Terminal 时，后端与前端会以两个标签页开在同一个 Windows Terminal 窗口中（窗口名为 SmartLearn）；若在终端内运行 `start.bat`，则直接开在当前窗口。未安装 Windows Terminal 时回退为两个独立 cmd 窗口。
+
 ---
 
 ## 六、访问地址

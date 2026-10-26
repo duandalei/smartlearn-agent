@@ -1,7 +1,8 @@
 @echo off
 REM ==========================================================================
 REM 一键启动脚本（Windows）
-REM 先在新窗口启动后端，再在新窗口启动前端。
+REM 后端与前端优先在 Windows Terminal 中以标签页打开；
+REM 未安装 Windows Terminal 时回退为独立 cmd 窗口。
 REM ==========================================================================
 setlocal
 
@@ -35,18 +36,36 @@ if not exist "..\data\smartlearn.db" (
     )
 )
 
-start "SmartLearn Backend" cmd /k "%PY% -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+REM 2) 启动后端与前端
+set "BACKEND_DIR=%~dp0backend"
+set "FRONTEND_DIR=%~dp0frontend"
+set "BACKEND_CMD=%PY% -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+set "FRONTEND_CMD=npm run dev"
 
-REM 前端
-cd /d "%~dp0frontend"
-if not exist "node_modules" (
+REM 前端依赖检查
+if not exist "%FRONTEND_DIR%\node_modules" (
     echo [提示] 未检测到 node_modules，正在安装前端依赖 ...
+    pushd "%FRONTEND_DIR%"
     call npm install
+    popd
 )
-start "SmartLearn Frontend" cmd /k "npm run dev"
+
+REM 已在 Windows Terminal 中运行时，标签页开在当前窗口；
+REM 否则使用固定命名的 SmartLearn 窗口（不存在时会自动创建）。
+set "WT_WIN=smartlearn"
+if defined WT_SESSION set "WT_WIN=0"
+
+where wt.exe >nul 2>&1
+if not errorlevel 1 (
+    wt -w %WT_WIN% nt -d "%BACKEND_DIR%" --title "SmartLearn Backend" --suppressApplicationTitle cmd /k "%BACKEND_CMD%"
+    wt -w %WT_WIN% nt -d "%FRONTEND_DIR%" --title "SmartLearn Frontend" --suppressApplicationTitle cmd /k "%FRONTEND_CMD%"
+) else (
+    start "SmartLearn Backend" /d "%BACKEND_DIR%" cmd /k "%BACKEND_CMD%"
+    start "SmartLearn Frontend" /d "%FRONTEND_DIR%" cmd /k "%FRONTEND_CMD%"
+)
 
 echo.
-echo 后端窗口与前端窗口已分别打开：
+echo 后端与前端已分别打开：
 echo   后端: http://localhost:8000/docs
 echo   前端: http://localhost:5173
 endlocal
