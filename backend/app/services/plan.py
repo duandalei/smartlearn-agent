@@ -6,8 +6,10 @@ SPEC §5.7）：
 - ``generate_plan``：输入聚合 → 规划 LLM 三分支（30s 总窗 + 重试 1
   次 + 降级纯规则）→ 确定性排程引擎 → 同事务落库（OP1 双分支 +
   任务唯一性铁律三道保证）；
-- ``adjust_plan``：三条件评估 → 纯确定性重排（零 LLM）→ 版本链
-  落库（parent_plan_id 备份链）+ 任务 scheduled_date 同步；
+- ``adjust_plan``：AI 判断「要不要调、调哪些」→ 确定性排程引擎
+  落位 → 版本链落库（parent_plan_id 备份链）+ 任务
+  scheduled_date 同步；AI 不可用或输出不合法时直接报错，不降级
+  为规则调整；
 - ``get_current_plan`` / ``get_plan_diff``：查询与幂等 diff 重算
   （与调整随返共用 adjuster.compute_diff 同一函数，D4）。
 
@@ -44,7 +46,6 @@ from app.analytics.adjuster import (
     TaskSnapshot,
     apply_adjustment,
     compute_diff,
-    evaluate_move_set,
     render_adjust_reason,
 )
 from app.analytics.scheduler import (
@@ -58,7 +59,7 @@ from app.analytics.scheduler import (
     current_week_window,
     next_week_window,
 )
-from app.core.response import CODE_INTERNAL_ERROR, BizException
+from app.core.response import CODE_INTERNAL_ERROR, CODE_LLM_FAILED, BizException
 from app.models.enums import GoalStatus, PlanSource, PlanStatus, TaskSource, TaskStatus
 from app.models.goal import LearningGoal
 from app.models.plan import LearningPlan, LearningPlanItem
@@ -81,6 +82,10 @@ except ZoneInfoNotFoundError:  # pragma: no cover —— Windows 无 tzdata 环�
 #: 规划 LLM 超时（秒）——首调 + 解析失败重试合计 ≤ 30s 总窗（决策 A3/A7，
 #: 锁定 HTTP 35s 上限不破；仅测试可 monkeypatch，O8 铁律）。
 PLAN_LLM_TIMEOUT_S: float = 30.0
+
+#: 调整 LLM 超时（秒）——单次调用，需小于前端 30s 请求超时，留出
+#: 落库与响应时间（仅测试可 monkeypatch，O8 铁律）。
+ADJUST_LLM_TIMEOUT_S: float = 25.0
 
 #: 周期天数（一个完整自然周）。
 _WEEK_DAYS: int = 7
@@ -112,6 +117,25 @@ class _PlanCandidatesLLM(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     candidates: list[_PlanCandidateLLM] = Field(min_length=5, max_length=14)
+
+
+class _AdjustItemLLM(BaseModel):
+    """LLM 调整条目（只引用条目 id 与动作，禁止日期时间）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: int = Field(ge=1)
+    action: Literal["move", "drop"]
+
+
+class _AdjustDecisionLLM(BaseModel):
+    """LLM 调整决策顶层结构。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    needs_adjustment: bool
+    reason: str = Field(default="", max_length=500)
+    items: list[_AdjustItemLLM] = Field(default_factory=list, max_length=50)
 
 
 class _ParseFailed(Exception):
@@ -631,7 +655,7 @@ def _persist_generated_plan(
 
 
 # ---------------------------------------------------------------------------
-# 调整路径（design 2.4.3：零 LLM 纯确定性）
+# 调整路径（AI 决策 + 确定性排程）
 # ---------------------------------------------------------------------------
 
 
@@ -701,13 +725,171 @@ def _build_adjust_context(
     )
 
 
-async def adjust_plan(db: Session, user_id: int, plan_id: int | None) -> dict[str, Any]:
-    """动态调整学习计划（HTTP ③ 与工具 T3 共用；纯确定性零 LLM）。
+def _adjust_prompt(context: AdjustContext) -> list[ChatMessage]:
+    """构造调整决策提示词（AI 只输出条目 id 与动作，禁止日期时间）。
 
-    三条件量化评估（未完成 ∧ (截止临近 ∨ 时长不足)）→ 确定性重排
-    → 新版本 + parent_plan_id 备份链 + 具体 adjust_reason + diff 随返；
-    任务被移动 / 顺延 / 移出时同步 ``task.scheduled_date``（OP1 调整
-    路径同步义务——否则任务页与计划页对不上）。
+    输入包含条目布局、完成状态、关联任务截止时间/状态、每日容量与
+    近 7 天学习时长；AI 据此判断是否需要调整以及调整哪些条目。
+    """
+    rows: list[dict[str, Any]] = []
+    for item in context.items:
+        task = (
+            context.tasks.get(item.task_id)
+            if item.task_id is not None
+            else None
+        )
+        # 已完成/跳过条目（含关联任务已完成）不可调整：直接不喂给模型，
+        # 避免它据此编造理由或选中无法执行的条目。
+        if item.status in ("done", "skipped") or (
+            task is not None and task.status == "done"
+        ):
+            continue
+        rows.append(
+            {
+                "item_id": item.item_id,
+                "date": item.plan_date.isoformat(),
+                "start": (
+                    item.start_time.strftime("%H:%M")
+                    if item.start_time is not None
+                    else None
+                ),
+                "end": (
+                    item.end_time.strftime("%H:%M")
+                    if item.end_time is not None
+                    else None
+                ),
+                "topic": item.topic,
+                "task_id": item.task_id,
+                "deadline": (
+                    task.deadline.isoformat()
+                    if task is not None and task.deadline is not None
+                    else None
+                ),
+                "task_status": task.status if task is not None else None,
+                "estimated_minutes": item.estimated_minutes,
+                "priority": item.priority,
+                "status": item.status,
+            }
+        )
+    user_content = (
+        "请评估本周学习计划是否需要调整，并给出要调整的条目。\n\n"
+        "### 当前情况\n"
+        f"- 今天：{context.now.date().isoformat()}\n"
+        f"- 每日可学习时长：{context.daily_capacity} 分钟\n"
+        f"- 近 7 天累计学习：{context.recent_minutes} 分钟\n"
+        f"- 本周可调整条目：{json.dumps(rows, ensure_ascii=False)}\n"
+        "（条目状态或关联任务已完成的条目已省略，不可调整；清单为空时必须"
+        "返回 needs_adjustment=false）\n\n"
+        "### 判断依据\n"
+        "1. 任务未完成且截止临近或已逾期；\n"
+        "2. 本周剩余时间不足以完成原计划；\n"
+        "3. 任务优先级、依赖关系或执行情况发生变化，需要重新安排；\n"
+        "4. 没有充分理由时不要调整（needs_adjustment=false）。\n\n"
+        "### 输出要求\n"
+        "输出严格 JSON，形如：\n"
+        '{"needs_adjustment": true, "reason": "临时说明", '
+        '"items": [{"item_id": 12, "action": "move"}]}\n'
+        "规则：\n"
+        "1. item_id 只能引用上方条目清单中的 id；\n"
+        "2. action 取 move（由系统排到本周空闲时段）或 drop"
+        "（移出本周计划，任务本身保留）；\n"
+        "3. status 为 done/skipped 的条目不可调整，它们是历史事实，"
+        "也不应作为调整理由；\n"
+        "4. 不需要调整时 needs_adjustment=false 且 items 为空数组；\n"
+        "5. reason 用中文说明判断依据（不超过 200 字），提到条目时使用 "
+        "topic 名称，不要出现 item_id / task_id 等内部编号；\n"
+        "6. 禁止输出任何日期、时间、星期字段——具体排期由系统确定；\n"
+        "7. 直接输出 JSON，不要任何解释文字。"
+    )
+    return [
+        ChatMessage(
+            role="system",
+            content=(
+                "你是学习计划调整助手，负责判断本周计划是否需要调整、"
+                "调整哪些条目以及原因，不负责具体时间安排。"
+            ),
+        ),
+        ChatMessage(role="user", content=user_content),
+    ]
+
+
+def _parse_adjust_decision(
+    text: str, context: AdjustContext
+) -> _AdjustDecisionLLM:
+    """LLM 文本 → 调整决策（剥围栏 → JSON → schema + 条目合法性校验）。
+
+    Raises:
+        _ParseFailed: 结构不合法或引用了不可调整的条目。
+    """
+    payload = _strip_code_fence(text)
+    try:
+        data = json.loads(payload)
+    except (json.JSONDecodeError, ValueError):
+        raise _ParseFailed("无法解析为 JSON") from None
+    try:
+        decision = _AdjustDecisionLLM.model_validate(data)
+    except ValidationError as exc:
+        raise _ParseFailed(f"调整结构不合法：{exc.errors()[:2]}") from None
+
+    if not decision.needs_adjustment:
+        # 与 needs_adjustment=false 矛盾的多余条目直接忽略。
+        return decision.model_copy(update={"items": []})
+
+    adjustable = {
+        item.item_id
+        for item in context.items
+        if item.item_id is not None
+        and item.status not in ("done", "skipped")
+        and not (
+            item.task_id is not None
+            and item.task_id in context.tasks
+            and context.tasks[item.task_id].status == "done"
+        )
+    }
+    seen: set[int] = set()
+    kept: list[_AdjustItemLLM] = []
+    for entry in decision.items:
+        if entry.item_id not in adjustable:
+            raise _ParseFailed(f"item_id={entry.item_id} 不在可调整条目内")
+        if entry.item_id in seen:
+            continue
+        seen.add(entry.item_id)
+        kept.append(entry)
+    if not kept:
+        raise _ParseFailed("needs_adjustment=true 但未给出任何调整条目")
+    return decision.model_copy(update={"items": kept})
+
+
+async def _decide_adjustment(context: AdjustContext) -> _AdjustDecisionLLM:
+    """调用 LLM 判断是否需要调整及调整条目；失败直接报错（不降级）。"""
+    try:
+        text = await asyncio.wait_for(
+            llm.chat(_adjust_prompt(context)), timeout=ADJUST_LLM_TIMEOUT_S
+        )
+    except asyncio.TimeoutError:
+        logger.warning("plan_adjust_timeout")
+        raise BizException(
+            CODE_LLM_FAILED, "AI 调整超时，请稍后重试", http_status=502
+        ) from None
+    try:
+        return _parse_adjust_decision(text, context)
+    except _ParseFailed as exc:
+        logger.warning("plan_adjust_parse_failed reason=%s", exc)
+        raise BizException(
+            CODE_LLM_FAILED, "AI 返回的调整方案无法解析，请重试", http_status=502
+        ) from None
+
+
+async def adjust_plan(db: Session, user_id: int, plan_id: int | None) -> dict[str, Any]:
+    """动态调整学习计划（HTTP ③ 与工具 T3 共用；AI 决策 + 确定性排程）。
+
+    AI 判断「是否需要调整、调整哪些条目、原因是什么」→ 确定性排程
+    引擎把移动集排进本周空闲时段、移出集从计划中移除 → 新版本 +
+    parent_plan_id 备份链 + adjust_reason + diff 随返；任务被移动 /
+    顺延 / 移出时同步 ``task.scheduled_date``（OP1 调整路径同步义务）。
+
+    AI 调用失败、超时或输出不合法时直接抛错，计划保持原样——本路径
+    不再回退规则调整。
 
     Args:
         db: 数据库会话。
@@ -719,7 +901,8 @@ async def adjust_plan(db: Session, user_id: int, plan_id: int | None) -> dict[st
         diff, adjusted}。
 
     Raises:
-        BizException: 1005（不存在/越权）/ 1007（非 active）。
+        BizException: 1005（不存在/越权）/ 1007（非 active）/
+            3000（AI 不可用或输出不合法，HTTP 502）。
     """
     if plan_id is None:
         plan = _current_active_plan(db, user_id)
@@ -731,17 +914,31 @@ async def adjust_plan(db: Session, user_id: int, plan_id: int | None) -> dict[st
         raise BizException(1007, "仅可调整生效中的计划", 400)
 
     context = _build_adjust_context(db, user_id, plan)
-    move_set = evaluate_move_set(context)
-    if not move_set:
+    # 释放读事务：AI 决策最长等 25s，避免期间持有 SQLite 读锁阻塞其它写入。
+    db.commit()
+    decision = await _decide_adjustment(context)
+    if not decision.needs_adjustment:
         return {
             "plan": _plan_out(plan),
-            "adjust_reason": "当前计划无需调整",
+            "adjust_reason": decision.reason.strip() or "AI 判断当前计划无需调整",
             "diff": {"base_plan_id": None, "moved": [], "added": [], "removed": []},
             "adjusted": False,
         }
 
-    result: AdjustmentResult = apply_adjustment(context, move_set)
-    reason = render_adjust_reason(result.reason_material)
+    item_by_id = {item.item_id: item for item in context.items}
+    move_set = [
+        item_by_id[entry.item_id]
+        for entry in decision.items
+        if entry.action == "move"
+    ]
+    drop_set = [
+        item_by_id[entry.item_id]
+        for entry in decision.items
+        if entry.action == "drop"
+    ]
+
+    result: AdjustmentResult = apply_adjustment(context, move_set, drop_set)
+    reason = decision.reason.strip() or render_adjust_reason(result.reason_material)
 
     # 单事务版本链落库（周期不变——start/end 与旧版逐字段相等，裁决 #10）
     plan.status = PlanStatus.ARCHIVED
@@ -918,9 +1115,11 @@ def get_plan_diff(db: Session, user_id: int, plan_id: int) -> dict[str, Any]:
         )
         for item in _ordered_items(plan)
     ]
-    context = _build_adjust_context(db, user_id, base)
-    move_set = evaluate_move_set(context)
-    movable_ids = {item.task_id for item in move_set if item.task_id is not None}
+    # AI 决策不可重放：统一以旧版全部任务 id 作为 movable 集合，
+    # 与 apply_adjustment 调整随返使用同一口径（reason 文案一致）。
+    movable_ids = {
+        item.task_id for item in old_items if item.task_id is not None
+    }
     diff = compute_diff(old_snapshots, new_layouts, movable_ids)
     return {"base_plan_id": base.id, **diff}
 

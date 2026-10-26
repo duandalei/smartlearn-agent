@@ -9,8 +9,8 @@ P12 交付后注册 12 个工具（名称与 PROJECT_CONTEXT §4 工具清单逐
 
 计划与报告四工具（P12 接入，2026-10-23 交付）：get_learning_plan
 读取当前生效计划；generate_learning_plan 生成下一完整自然周
-（失败自动降级规则模式）；adjust_learning_plan 动态调整并给出
-具体理由（零 LLM 纯确定性）；generate_learning_report 生成
+（失败自动降级规则模式）；adjust_learning_plan 由 AI 判断是否需要
+调整及调整哪些条目，再由确定性引擎排期；generate_learning_report 生成
 日报/周报/月报（失败自动降级模板总结）。不设 get_plan_diff
 独立工具——diff 由 adjust_learning_plan 返回值携带（工具数量
 越少模型选择越准）。
@@ -311,12 +311,12 @@ _TOOL_SPECS: list[ToolSpec] = [
             "调整一下这周的计划 / 计划跟不上了 / 任务完不成』，或检测到任务"
             "未完成且截止临近、近期学习时长不足时调用。参数：plan_id（可选"
             "正整数，目标计划 id，缺省调整当前生效计划）。计划调整会生成新"
-            "版本并给出具体理由（含调整到哪天、顺延了什么），原版本保留为"
-            "历史快照可随时对比。返回 {plan, adjust_reason, diff, adjusted}："
-            "adjust_reason 为具体中文理由（含任务名与从哪天调整到哪天）；"
+            "版本，原版本保留为历史快照可随时对比。返回 {plan, adjust_reason, "
+            "diff, adjusted}：adjust_reason 为 AI 给出的调整判断理由；"
             "diff 为结构化改动清单（moved / added / removed，每条含主题、"
-            "原位置、新位置与原因）；无可调整项时 adjusted=false 且不新建"
-            "版本。当前没有进行中的学习计划时返回 {\"error\": \"当前没有"
+            "原位置、新位置与原因）；无需调整时 adjusted=false 且不新建"
+            "版本；AI 不可用或输出不合法时返回 error。"
+            "当前没有进行中的学习计划时返回 {\"error\": \"当前没有"
             "进行中的学习计划\"}。"
         ),
     ),

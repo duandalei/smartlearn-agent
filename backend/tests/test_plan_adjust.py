@@ -1,30 +1,23 @@
-"""计划调整测试（tasks.md 组 8：adjuster 引擎单测 E 组 + A1–A10 服务级）。
+"""计划调整测试（adjuster 引擎单测 + A1–A12 服务级）。
 
-覆盖验收：D3（版本链）/ D4（diff 幂等）/ D10（纯确定性）/ D11（部分）/
-D14（事务原子性）；OP1 调整路径同步义务（A8）。
+覆盖验收：D3（版本链）/ D4（diff 幂等）/ D14（事务原子性）/
+AI 决策契约（失败报错、条目不合法拒绝）；OP1 调整路径同步义务（A8）。
 
-- 引擎单测（E 组）：构造 dataclass 直测，不依赖 LLM 与 DB；
-- 服务级（A 组）：调整路径零 LLM——全部用例在「LLM 完全不可用」
-  环境下跑通即证纯确定性（D10）；日期断言动态计算（北京口径）。
+- 引擎单测：reason 模板等纯函数，不依赖 LLM 与 DB；
+- 服务级（A 组）：monkeypatch ``llm.chat`` 注入 AI 决策 JSON——
+  判断「要不要调、调哪些」属于 LLM 职责，排程仍由确定性引擎完成；
+  日期断言动态计算（北京口径）。
 """
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 import pytest
 
-from app.analytics.adjuster import (
-    DEADLINE_URGENT_HOURS,
-    RECENT_MINUTES_RATIO,
-    AdjustContext,
-    ItemSnapshot,
-    ReasonMaterial,
-    TaskSnapshot,
-    evaluate_move_set,
-    render_adjust_reason,
-)
+from app.analytics.adjuster import ReasonMaterial, render_adjust_reason
 
 TZ = timezone(timedelta(hours=8))
 
@@ -41,63 +34,8 @@ def _next_monday() -> date:
 
 
 # ---------------------------------------------------------------------------
-# E 组：adjuster 引擎单测（纯函数直测）
+# adjuster 引擎单测（reason 模板等纯函数）
 # ---------------------------------------------------------------------------
-
-
-def _ctx(
-    items: list[ItemSnapshot],
-    tasks: dict[int, TaskSnapshot],
-    recent_minutes: int = 500,
-    capacity: int = 90,
-    now: datetime | None = None,
-    week_days: list[date] | None = None,
-) -> AdjustContext:
-    base_now = now or datetime(2026, 10, 28, 20, 0, tzinfo=TZ)
-    days = week_days or [date(2026, 10, 26) + timedelta(days=i) for i in range(7)]
-    return AdjustContext(
-        items=items, tasks=tasks, recent_minutes=recent_minutes,
-        daily_capacity=capacity, now=base_now, week_days=days,
-    )
-
-
-def test_adjuster_constants_locked() -> None:
-    """三条件阈值常量锁定（SPEC §4.4-1）。"""
-    assert DEADLINE_URGENT_HOURS == 48
-    assert RECENT_MINUTES_RATIO == 0.6
-
-
-def test_adjuster_evaluate_thresholds() -> None:
-    """48h 边界：47h 命中 / 49h 不命中；时长不足为全局条件。"""
-    now = datetime(2026, 10, 28, 20, 0, tzinfo=TZ)
-    monday = date(2026, 10, 26)
-
-    def snap(task_id: int, plan_date: date) -> ItemSnapshot:
-        return ItemSnapshot(
-            item_id=task_id, plan_date=plan_date, start_time=time(19, 0),
-            end_time=time(20, 0), topic=f"任务{task_id}", task_id=task_id,
-            estimated_minutes=60, priority="medium", status="planned",
-        )
-
-    # 47h 命中
-    tasks = {1: TaskSnapshot(deadline=now + timedelta(hours=47), status="todo")}
-    ctx = _ctx([snap(1, monday)], tasks, recent_minutes=500, capacity=90, now=now)
-    assert [i.task_id for i in evaluate_move_set(ctx)] == [1]
-    # 49h 不命中（时长充足）
-    tasks = {1: TaskSnapshot(deadline=now + timedelta(hours=49), status="todo")}
-    ctx = _ctx([snap(1, monday)], tasks, recent_minutes=500, capacity=90, now=now)
-    assert evaluate_move_set(ctx) == []
-    # 时长不足为全局条件：全部未完成条目可移动（无 deadline 也命中）
-    tasks = {1: TaskSnapshot(deadline=None, status="todo"), 2: TaskSnapshot(deadline=None, status="todo")}
-    ctx = _ctx([snap(1, monday), snap(2, date(2026, 10, 27))], tasks, recent_minutes=10, capacity=90, now=now)
-    assert {i.task_id for i in evaluate_move_set(ctx)} == {1, 2}
-    # done 条目永不进移动集
-    done_item = ItemSnapshot(
-        item_id=3, plan_date=monday, start_time=time(19, 0), end_time=time(20, 0),
-        topic="已完成", task_id=3, estimated_minutes=60, priority="medium", status="done",
-    )
-    ctx = _ctx([done_item], {3: TaskSnapshot(deadline=now + timedelta(hours=1), status="done")}, recent_minutes=10, now=now)
-    assert evaluate_move_set(ctx) == []
 
 
 def test_adjuster_reason_single_move() -> None:
@@ -153,6 +91,20 @@ def test_adjuster_reason_postponed_and_removed() -> None:
     material.removed_desc = "线性代数特征值专题 等 1 个"
     reason2 = render_adjust_reason(material)
     assert "因本周容量不足" in reason2 and "可在任务页单独安排" in reason2
+
+
+def test_adjuster_reason_only_removed() -> None:
+    """无可落位条目（只有移出）时不渲染残缺的「已从调整到」话术。"""
+    material = ReasonMaterial(
+        moved_topics=[],
+        moved_count=0,
+        cause_desc="未完成",
+        removed_desc="线性代数特征值专题 等 2 个",
+    )
+    reason = render_adjust_reason(material)
+    assert "移出计划" in reason
+    assert "已从" not in reason
+    assert "学习学习" not in reason
 
 
 # ---------------------------------------------------------------------------
@@ -307,22 +259,53 @@ def _snapshot_items(plan_id: int) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def llm_all_dead(monkeypatch: pytest.MonkeyPatch) -> None:
-    """D10 前提：LLM 完全不可用（plan 与 report 双 fake 均抛错）。"""
+def _mock_adjust_llm(
+    monkeypatch: pytest.MonkeyPatch, decision: dict[str, Any]
+) -> None:
+    """注入 AI 调整决策 JSON（monkeypatch 共享的 llm.chat）。"""
+
+    async def fake(_messages: list[Any]) -> str:
+        return json.dumps(decision, ensure_ascii=False)
+
+    monkeypatch.setattr("app.services.plan.llm.chat", fake)
+
+
+def _llm_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AI 不可用（服务类失败）。"""
     from app.core.response import BizException
 
-    async def dead(_messages: list[dict[str, Any]]) -> str:
+    async def dead(_messages: list[Any]) -> str:
         raise BizException(3000, "AI 服务不可用", 502)
 
     monkeypatch.setattr("app.services.plan.llm.chat", dead)
-    monkeypatch.setattr("app.services.report.llm.chat", dead)
+
+
+def _item_id(
+    plan_id: int,
+    *,
+    task_id: int | None = None,
+    topic: str | None = None,
+) -> int:
+    """按 task_id / topic 定位计划条目 id（AI 决策只引用 item_id）。"""
+    from sqlalchemy import select
+
+    from app.models.plan import LearningPlanItem
+
+    with _db() as db:
+        stmt = select(LearningPlanItem.id).where(
+            LearningPlanItem.plan_id == plan_id
+        )
+        if task_id is not None:
+            stmt = stmt.where(LearningPlanItem.task_id == task_id)
+        if topic is not None:
+            stmt = stmt.where(LearningPlanItem.topic == topic)
+        return int(db.execute(stmt).scalars().first())
 
 
 def test_a1_version_chain_and_reason(
-    app_client: Any, user_a: dict[str, Any], llm_all_dead: None, monkeypatch: pytest.MonkeyPatch
+    app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """D3：构造「未完成+截止明天」→ 调整 → 版本链 + 具体 reason（≥20 字符、含从→到）。"""
+    """D3：AI 要求移动 → 版本链 + AI reason 原样落库。"""
     _set_profile(app_client, user_a, 90)
     uid = _get_user_id(app_client, user_a)
     now = datetime.now(TZ)
@@ -342,6 +325,17 @@ def test_a1_version_chain_and_reason(
         ),
     )
     old_snapshot = _snapshot_items(plan_id)
+    ai_reason = "Transformer 作业 未完成且截止临近，已从周一晚上调整到本周后续空闲时段。"
+    _mock_adjust_llm(
+        monkeypatch,
+        {
+            "needs_adjustment": True,
+            "reason": ai_reason,
+            "items": [
+                {"item_id": _item_id(plan_id, task_id=overdue_id), "action": "move"}
+            ],
+        },
+    )
 
     resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
     assert resp.status_code == 200, resp.text
@@ -355,11 +349,8 @@ def test_a1_version_chain_and_reason(
     assert new_plan["end_date"] == (monday + timedelta(days=6)).isoformat()
 
     reason = data["adjust_reason"]
-    assert reason and len(reason) >= 20
-    assert "Transformer 作业" in reason
-    assert "从周一" in reason or "从" in reason  # 从→到日期表述
-    assert "调整到" in reason
-    assert new_plan["adjust_reason"] == reason  # 同值落库
+    assert reason == ai_reason  # AI 理由原样落库
+    assert new_plan["adjust_reason"] == reason
 
     with _db() as db:
         from app.models.plan import LearningPlan
@@ -370,7 +361,7 @@ def test_a1_version_chain_and_reason(
 
 
 def test_a2_diff_consistency_with_endpoint(
-    app_client: Any, user_a: dict[str, Any], llm_all_dead: None, monkeypatch: pytest.MonkeyPatch
+    app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """D4：调整随返 diff == diff 端点重算（幂等一致性——同函数构造性结果）。"""
     _set_profile(app_client, user_a, 90)
@@ -391,6 +382,16 @@ def test_a2_diff_consistency_with_endpoint(
             [{"date": monday, "start": time(19, 0), "end": time(20, 0), "topic": "临期测验复习",
               "task_id": task_id, "estimated": 60, "priority": "high"}]
         ),
+    )
+    _mock_adjust_llm(
+        monkeypatch,
+        {
+            "needs_adjustment": True,
+            "reason": "临期测验复习任务未完成且截止临近。",
+            "items": [
+                {"item_id": _item_id(plan_id, task_id=task_id), "action": "move"}
+            ],
+        },
     )
     resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
     data = resp.json()["data"]
@@ -413,10 +414,10 @@ def test_a2_diff_consistency_with_endpoint(
     assert resp2.json()["data"] == data["diff"]
 
 
-def test_a3_pure_deterministic(
-    app_client: Any, user_a: dict[str, Any], llm_all_dead: None
+def test_a3_llm_unavailable_returns_error(
+    app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """D10：LLM 完全不可用环境下调整全链路可用（本文件全部用例共享该前提）。"""
+    """AI 不可用 → 502/3000，计划保持 active，不产生新版本（不回退规则）。"""
     _set_profile(app_client, user_a, 90)
     uid = _get_user_id(app_client, user_a)
     now = datetime.now(TZ)
@@ -429,15 +430,87 @@ def test_a3_pure_deterministic(
               "task_id": task_id, "estimated": 60, "priority": "high"}]
         ),
     )
+    _llm_unavailable(monkeypatch)
     resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
-    assert resp.status_code == 200
-    assert resp.json()["data"]["adjusted"] is True
+    assert resp.status_code == 502
+    assert resp.json()["code"] == 3000
+
+    with _db() as db:
+        from sqlalchemy import func, select
+
+        from app.models.plan import LearningPlan
+
+        count = db.scalar(
+            select(func.count()).select_from(
+                select(LearningPlan).where(LearningPlan.user_id == uid).subquery()
+            )
+        )
+        assert count == 1
+        assert db.get(LearningPlan, plan_id).status == "active"
+
+
+def test_a3b_invalid_llm_output_returns_error(
+    app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AI 输出不是合法 JSON / 引用不存在的条目 → 502/3000，不调整。"""
+    _set_profile(app_client, user_a, 90)
+    uid = _get_user_id(app_client, user_a)
+    monday = _this_monday()
+    plan_id = _insert_week_plan(
+        uid,
+        [{"date": monday, "start": time(19, 0), "end": time(20, 0), "topic": "任意条目",
+          "task_id": None, "estimated": 60, "priority": "medium"}],
+    )
+
+    async def bad_json(_messages: list[Any]) -> str:
+        return "这不是 JSON"
+
+    monkeypatch.setattr("app.services.plan.llm.chat", bad_json)
+    resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
+    assert resp.status_code == 502 and resp.json()["code"] == 3000
+
+    _mock_adjust_llm(
+        monkeypatch,
+        {
+            "needs_adjustment": True,
+            "reason": "该调整",
+            "items": [{"item_id": 999999, "action": "move"}],
+        },
+    )
+    resp2 = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
+    assert resp2.status_code == 502 and resp2.json()["code"] == 3000
+
+
+def test_a3c_rejects_done_item(
+    app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AI 选中 done 条目 → 视为输出不合法，不调整。"""
+    uid = _get_user_id(app_client, user_a)
+    monday = _this_monday()
+    plan_id = _insert_week_plan(
+        uid,
+        [{"date": monday, "start": time(19, 0), "end": time(20, 0), "topic": "已完成项",
+          "task_id": None, "estimated": 60, "priority": "medium", "status": "done"}],
+        include_rest=False,
+    )
+    _mock_adjust_llm(
+        monkeypatch,
+        {
+            "needs_adjustment": True,
+            "reason": "尝试调整已完成项",
+            "items": [
+                {"item_id": _item_id(plan_id, topic="已完成项"), "action": "move"}
+            ],
+        },
+    )
+    resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
+    assert resp.status_code == 502 and resp.json()["code"] == 3000
 
 
 def test_a4_nothing_to_adjust(
-    app_client: Any, user_a: dict[str, Any], llm_all_dead: None
+    app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A4：全部条目 done → adjusted=false、计划数不变、无新版本。"""
+    """A4：AI 判断无需调整 → adjusted=false、计划数不变、无新版本。"""
     uid = _get_user_id(app_client, user_a)
     monday = _this_monday()
     plan_id = _insert_week_plan(
@@ -446,13 +519,18 @@ def test_a4_nothing_to_adjust(
             {"date": monday, "start": time(19, 0), "end": time(20, 0), "topic": "已完成项",
              "task_id": None, "estimated": 60, "priority": "medium", "status": "done"}
         ],
-        include_rest=False,  # 只有 done 条目：休息条目周五过后会误入移动集
+        include_rest=False,
+    )
+    ai_reason = "本周任务安排合理，无需调整。"
+    _mock_adjust_llm(
+        monkeypatch,
+        {"needs_adjustment": False, "reason": ai_reason, "items": []},
     )
     resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
     assert resp.status_code == 200, resp.text
     data = resp.json()["data"]
     assert data["adjusted"] is False
-    assert data["adjust_reason"] == "当前计划无需调整"
+    assert data["adjust_reason"] == ai_reason
     assert data["diff"] == {"base_plan_id": None, "moved": [], "added": [], "removed": []}
 
     with _db() as db:
@@ -469,7 +547,7 @@ def test_a4_nothing_to_adjust(
 
 
 def test_a5_done_preserved(
-    app_client: Any, user_a: dict[str, Any], llm_all_dead: None
+    app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """裁决 #13：done 条目原样迁移（位置不变、状态保持、不进 diff）。"""
     _set_profile(app_client, user_a, 90)
@@ -502,6 +580,16 @@ def test_a5_done_preserved(
         item.status = "done"
         db.commit()
 
+    _mock_adjust_llm(
+        monkeypatch,
+        {
+            "needs_adjustment": True,
+            "reason": "紧急补课临近截止，需要调整。",
+            "items": [
+                {"item_id": _item_id(plan_id, task_id=urgent_task), "action": "move"}
+            ],
+        },
+    )
     resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
     data = resp.json()["data"]
     assert data["adjusted"] is True
@@ -515,7 +603,7 @@ def test_a5_done_preserved(
 
 
 def test_a6_postpone_scenario(
-    app_client: Any, user_a: dict[str, Any], llm_all_dead: None, monkeypatch: pytest.MonkeyPatch
+    app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A6：周六容量不足 → 顺延周六 low 条目到周日（moved diff 含牺牲条目）。"""
     _set_profile(app_client, user_a, 120)
@@ -547,6 +635,14 @@ def test_a6_postpone_scenario(
             ]
         ),
     )
+    _mock_adjust_llm(
+        monkeypatch,
+        {
+            "needs_adjustment": True,
+            "reason": "紧急专项临近截止，调整到周末空闲时段。",
+            "items": [{"item_id": _item_id(plan_id, task_id=urgent), "action": "move"}],
+        },
+    )
     resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
     data = resp.json()["data"]
     assert data["adjusted"] is True
@@ -555,23 +651,16 @@ def test_a6_postpone_scenario(
     # 紧急条目移到周末
     urgent_move = next(m for m in moved if m["task_id"] == urgent)
     assert urgent_move["to_date"] in (saturday.isoformat(), sunday.isoformat())
-    # 有顺延话术（容量不足触发牺牲）
-    reason = data["adjust_reason"]
-    if any(m["task_id"] == low_sat and m["reason"] == "为紧急任务腾出时段顺延" for m in moved):
-        assert "顺延" in reason
-        sat_move = next(m for m in moved if m["task_id"] == low_sat)
-        assert sat_move["from_date"] == saturday.isoformat()
-        assert sat_move["to_date"] > saturday.isoformat()
-    else:
-        # 紧急任务落到周日（周日空闲）时无顺延——同样合法，但 reason 不含顺延话术
-        assert urgent_move["to_date"] == sunday.isoformat()
-        assert "顺延" not in reason
+    # 容量不足触发牺牲时，牺牲条目也应被顺延（出现在 moved 中）
+    for m in moved:
+        if m["task_id"] not in (urgent, None):
+            assert m["to_date"] > m["from_date"]
 
 
 def test_a7_removed_and_a8_task_sync(
-    app_client: Any, user_a: dict[str, Any], llm_all_dead: None
+    app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A7+A8：周期全满 → 低优先级 removed（任务保留）；moved 任务 scheduled_date 同步。"""
+    """A7+A8：AI 指定移出 → 任务保留且 scheduled_date 置空；moved 任务同步。"""
     _set_profile(app_client, user_a, 120)
     uid = _get_user_id(app_client, user_a)
     now = datetime.now(TZ)
@@ -598,14 +687,25 @@ def test_a7_removed_and_a8_task_sync(
          "task_id": None, "estimated": 60, "priority": "medium"},
     ]
     plan_id = _insert_week_plan(uid, _item_specs_for_tasks(specs))
+    _mock_adjust_llm(
+        monkeypatch,
+        {
+            "needs_adjustment": True,
+            "reason": "满周紧急任务临近截止需调整；被移出的低优任务移出本周计划。",
+            "items": [
+                {"item_id": _item_id(plan_id, task_id=urgent), "action": "move"},
+                {"item_id": _item_id(plan_id, task_id=victim), "action": "drop"},
+            ],
+        },
+    )
     resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
     data = resp.json()["data"]
     assert data["adjusted"] is True
 
     removed = data["diff"]["removed"]
     removed_ids = {r["task_id"] for r in removed}
-    # 容量不足时牺牲条目进 removed（victim low 优先牺牲；task_id None 的占位也可能）
-    assert removed, data["diff"]
+    # AI 明确移出的任务必然进 removed
+    assert victim in removed_ids, data["diff"]
 
     with _db() as db:
         from app.models.task import Task
@@ -627,12 +727,14 @@ def test_a7_removed_and_a8_task_sync(
             if r["task_id"] is not None:
                 task = db.get(Task, r["task_id"])
                 assert task.scheduled_date is None
-    if victim in removed_ids:
-        assert "移出计划" in data["adjust_reason"] or "容量不足" in data["adjust_reason"]
+    assert "移出本周计划" in data["adjust_reason"]
 
 
 def test_a9_permission_and_period_invariant(
-    app_client: Any, user_a: dict[str, Any], user_b: dict[str, Any], llm_all_dead: None
+    app_client: Any,
+    user_a: dict[str, Any],
+    user_b: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A9：越权 404/1005；archived 调整 1007；调整前后周期逐字段相等。"""
     _set_profile(app_client, user_a, 90)
@@ -653,10 +755,21 @@ def test_a9_permission_and_period_invariant(
 
         old_plan = db.get(LearningPlan, plan_id)
 
-    # 越权：user_b 访问 user_a 的计划
+    # 越权：user_b 访问 user_a 的计划（权限校验先于 AI 调用）
     resp_b = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_b["headers"], json={})
     assert resp_b.status_code == 404
     assert resp_b.json()["code"] == 1005
+
+    _mock_adjust_llm(
+        monkeypatch,
+        {
+            "needs_adjustment": True,
+            "reason": "周期校验任务临近截止。",
+            "items": [
+                {"item_id": _item_id(plan_id, task_id=task_id), "action": "move"}
+            ],
+        },
+    )
 
     # 正常调整 → 周期不变
     resp = app_client.post(f"/api/v1/plans/{plan_id}/adjust", headers=user_a["headers"], json={})
@@ -678,7 +791,7 @@ def test_a9_permission_and_period_invariant(
 
 
 def test_a10_transaction_atomicity(
-    app_client: Any, user_a: dict[str, Any], llm_all_dead: None, monkeypatch: pytest.MonkeyPatch
+    app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """D14：版本链落库中途异常 → 无半截版本、旧 active 未被动。"""
     import asyncio
@@ -697,6 +810,17 @@ def test_a10_transaction_atomicity(
             [{"date": monday, "start": time(19, 0), "end": time(20, 0), "topic": "原子性任务",
               "task_id": task_id, "estimated": 60, "priority": "high"}]
         ),
+    )
+
+    _mock_adjust_llm(
+        monkeypatch,
+        {
+            "needs_adjustment": True,
+            "reason": "原子性任务临近截止。",
+            "items": [
+                {"item_id": _item_id(plan_id, task_id=task_id), "action": "move"}
+            ],
+        },
     )
 
     def boom_factory(**_kwargs: Any) -> Any:

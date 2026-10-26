@@ -60,7 +60,8 @@ _BOUNDARY_SECTION_TEMPLATE = (
     "能力边界：学习计划的生成与调整、学习报告生成能力已可用"
     "（generate_learning_plan / adjust_learning_plan / "
     "generate_learning_report，另有 get_learning_plan 查看当前计划）。"
-    "计划调整会生成新版本并给出具体理由；生成失败时自动降级为规则"
+    "计划调整会生成新版本并给出具体理由（由 AI 判断是否需要调整）；"
+    "调整失败时直接返回错误（不降级）；计划生成失败时自动降级为规则"
     "模式，仍返回可用结果。回答中的计划安排与报告数字必须来自工具"
     "返回结果。禁止编造一份并不存在的学习计划或报告。"
 )

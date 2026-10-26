@@ -163,7 +163,7 @@ def test_t2_generate_learning_plan_tool(
 def test_t3_adjust_learning_plan_tool(
     app_client: Any, user_a: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """T3：缺省当前 active；无 active 返回 error 信封。"""
+    """T3：缺省当前 active；无 active 返回 error 信封；AI 决策注入后正常调整。"""
     _install_dead_plan_llm(monkeypatch)
     uid = _get_user_id(app_client, user_a)
     with _db() as db:
@@ -193,15 +193,28 @@ def test_t3_adjust_learning_plan_tool(
         )
         db.add(task)
         db.flush()
-        db.add(
-            LearningPlanItem(
-                plan_id=plan.id, plan_date=monday, start_time=_time(19, 0),
-                end_time=_time(20, 0), topic="临期专项", task_id=task.id,
-                estimated_minutes=60, priority=Priority.HIGH,
-                status=PlanItemStatus.PLANNED,
-            )
+        item = LearningPlanItem(
+            plan_id=plan.id, plan_date=monday, start_time=_time(19, 0),
+            end_time=_time(20, 0), topic="临期专项", task_id=task.id,
+            estimated_minutes=60, priority=Priority.HIGH,
+            status=PlanItemStatus.PLANNED,
         )
+        db.add(item)
+        db.flush()
+        item_id = item.id
         db.commit()
+
+    async def fake_adjust(_messages: list[dict[str, Any]]) -> str:
+        return json.dumps(
+            {
+                "needs_adjustment": True,
+                "reason": "临期专项临近截止，需要调整。",
+                "items": [{"item_id": item_id, "action": "move"}],
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr("app.services.plan.llm.chat", fake_adjust)
     with _db() as db:
         result2 = _call_tool("adjust_learning_plan", db, uid, {})
     assert result2["adjusted"] is True

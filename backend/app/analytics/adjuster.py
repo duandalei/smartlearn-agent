@@ -1,8 +1,10 @@
-"""确定性调整引擎（纯函数 + reason 模板，P12 调整路径核心，design 2.4.2）。
+"""确定性排程引擎（纯函数 + reason 模板，P12 调整路径执行层）。
 
-纯确定性铁律（SPEC 规则 5.2.1-8）：不调 LLM、不碰 DB（数据由
-services/plan.py 读库后传入）——调整结果完全由输入决定，
-LLM 不可用环境下全量可测（D10）。
+职责边界：**判断「要不要调、调哪些」由 AI 负责**（services/plan.py
+的 ``_decide_adjustment``）；本模块只负责把 AI 选出的移动/移出集
+落成合法的周内排期（时段、容量、冲突、顺延），不调 LLM、不碰 DB
+（数据由 services/plan.py 读库后传入）——同样的输入永远产生同样的
+布局，排程层可独立测试。
 
 diff 幂等重算（design 2.4.2-B / D4）：``compute_diff`` 是唯一 diff
 计算函数——``apply_adjustment`` 调整随返与 ``GET /plans/{id}/diff``
@@ -168,40 +170,8 @@ def _recent_insufficient(recent_minutes: int, daily_capacity: int) -> bool:
     return recent_minutes < daily_capacity * RECENT_WINDOW_DAYS * RECENT_MINUTES_RATIO
 
 
-def evaluate_move_set(context: AdjustContext) -> list[ItemSnapshot]:
-    """三条件量化评估 → 移动集：未完成 ∧ (截止临近 ∨ 时长不足)。
-
-    未完成 = 条目 status 非 done 且（plan_date < 今天 或 关联任务
-    status != done）；截止临近 = 关联任务 deadline 距 now ≤ 48h
-    （含已逾期）；时长不足 = 近 7 天学习时长 < 容量 × 7 × 0.6
-    （全局条件，命中则全部未完成条目可移动）。
-
-    Args:
-        context: 调整输入快照。
-
-    Returns:
-        list[ItemSnapshot]: 需要移动的条目（保持原 items 顺序）。
-    """
-    today = context.now.date()
-    insufficient = _recent_insufficient(context.recent_minutes, context.daily_capacity)
-    move_set: list[ItemSnapshot] = []
-    for item in context.items:
-        if item.status in ("done", "skipped"):
-            continue
-        task = context.tasks.get(item.task_id) if item.task_id is not None else None
-        unfinished = item.plan_date < today or (
-            task is not None and task.status != "done"
-        )
-        if not unfinished:
-            continue
-        urgent = _deadline_urgent(task.deadline if task else None, context.now)
-        if urgent or insufficient:
-            move_set.append(item)
-    return move_set
-
-
 def _cause_desc(context: AdjustContext, move_set: list[ItemSnapshot]) -> str:
-    """触发原因中文短语（与 evaluate_move_set 同口径重算）。"""
+    """触发原因中文短语（AI 未给出理由时的模板兜底）。"""
     has_urgent = any(
         _deadline_urgent(
             context.tasks[item.task_id].deadline
@@ -239,9 +209,9 @@ def compute_diff(
 
     幂等重算唯一实现（D4）：``apply_adjustment`` 调整随返与
     ``GET /plans/{id}/diff`` 端点共用本函数；对齐键 task_id 优先、
-    无任务条目按 topic。reason 由「是否属于移动集」推导——端点
-    重算时 movable_task_ids 由 evaluate_move_set 以同一 DB 状态
-    重算得出，保证逐条一致。
+    无任务条目按 topic。``movable_task_ids`` 统一由「旧版条目的
+    全部任务 id」推出（不重放 AI 决策），因此两个调用点构造的
+    集合恒等，reason 文案逐条一致。
 
     Args:
         old_items: 旧版（parent）条目快照。
@@ -269,7 +239,7 @@ def compute_diff(
             if old_item.status == "done":
                 continue  # done 条目缺失不产生 diff（防御——调整永不移除 done）
             reason = (
-                "周期内无可安排的空闲时段，移出计划"
+                "本次调整移出计划，可在任务页单独安排"
                 if (old_item.task_id is not None and old_item.task_id in movable)
                 or old_item.task_id is None
                 else "容量不足，移出计划"
@@ -334,24 +304,27 @@ def compute_diff(
 
 
 def apply_adjustment(
-    context: AdjustContext, move_set: list[ItemSnapshot]
+    context: AdjustContext,
+    move_set: list[ItemSnapshot],
+    drop_set: list[ItemSnapshot] | None = None,
 ) -> AdjustmentResult:
-    """移动 / 顺延 / removed 纯确定性重排 + diff 计算（零 LLM）。
+    """把 AI 选出的移动/移出集落成合法周排期 + diff 计算（零 LLM）。
 
     算法五步（design 2.4.2-A）：
-    1. 原样迁移：done/skipped 与未进移动集条目锚定不动；
+    1. 原样迁移：done/skipped 与未被 AI 选中的条目锚定不动；
     2. 移动集重排：``plan_date > max(原日期, 今天)`` 的候选日中
        **周末优先**（weekday >= 5 先于工作日），经共享时段游标
        落位（决策 A12）；
     3. 低优先级顺延：目标日容量不足时从该日非 done/skipped 条目按
        low → medium 选牺牲条目（high 不顺延）挪到更晚空闲时段；
-    4. removed 兜底：牺牲条目挪无可挪则移出计划；移动集自身
-       无法安排同样移出并如实写 reason；
+    4. removed 兜底：AI 明确要求移出的条目、牺牲后仍挪无可挪的
+       条目、以及移动集自身无法安排的条目移出计划；
     5. done/skipped 原样保持（裁决 #13 历史事实不可篡改）。
 
     Args:
         context: 调整输入快照。
-        move_set: evaluate_move_set 产出的移动集。
+        move_set: AI 选出的移动集。
+        drop_set: AI 选出的移出集（None 视为空）。
 
     Returns:
         AdjustmentResult: 新条目布局 + diff + reason 素材。
@@ -359,8 +332,14 @@ def apply_adjustment(
     today = context.now.date()
     capacity = context.daily_capacity
 
+    drop_set = drop_set or []
     move_ids = {id(item) for item in move_set}
-    keepers = [item for item in context.items if id(item) not in move_ids]
+    drop_ids = {id(item) for item in drop_set}
+    keepers = [
+        item
+        for item in context.items
+        if id(item) not in move_ids and id(item) not in drop_ids
+    ]
 
     occupied: dict[date, list[tuple[time, time]]] = {d: [] for d in context.week_days}
     used: dict[date, int] = {d: 0 for d in context.week_days}
@@ -483,12 +462,14 @@ def apply_adjustment(
     final_layouts.extend(layout for _, layout in placed_moves)
     final_layouts.sort(key=lambda l: (l.plan_date, l.start_time or time(0, 0)))
 
+    # AI 决策不可重放：diff 端点只能从旧版条目重算，因此两个调用点
+    # 统一用「旧版全部任务 id」作为 movable 集合，保证 reason 文案一致。
     movable_task_ids = {
-        item.task_id for item in move_set if item.task_id is not None
+        item.task_id for item in context.items if item.task_id is not None
     }
     diff = compute_diff(context.items, final_layouts, movable_task_ids)
 
-    removed_all = removed_removed + unplaced_moves
+    removed_all = drop_set + removed_removed + unplaced_moves
     material = _build_reason_material(
         context, move_set, placed_moves, postponed, removed_all
     )
@@ -594,8 +575,17 @@ def render_adjust_reason(material: ReasonMaterial) -> str:
     Returns:
         str: 具体中文调整理由（恒含任务名与「从 → 到」日期表述）。
     """
-    if material.moved_count <= 1:
-        topic = material.moved_topics[0] if material.moved_topics else "学习"
+    if material.moved_count == 0:
+        # 没有任何条目成功落位（例如只剩移出项）：不渲染「已从…调整到…」
+        # 这类空位话术，避免出现「已从调整到。」的残缺理由。
+        if material.removed_desc:
+            return (
+                f"检测到你本周计划需要调整：因本周容量不足，"
+                f"{material.removed_desc}任务已移出计划，可在任务页单独安排。"
+            )
+        return "未检测到需要调整的计划条目。"
+    if material.moved_count == 1:
+        topic = material.moved_topics[0] if material.moved_topics else "部分"
         segment1 = f"检测到你本周的{topic}学习任务{material.cause_desc}，"
         segment2_body = (
             f"已从{material.first_from_desc}调整到{material.first_to_desc}"

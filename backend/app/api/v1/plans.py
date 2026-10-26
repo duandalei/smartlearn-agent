@@ -147,11 +147,12 @@ async def adjust_plan(
     current_user: Annotated[User, Depends(get_current_user)],
     payload: PlanAdjustIn,
 ) -> dict[str, Any]:
-    """动态调整学习计划（核心差异化能力，纯确定性零 LLM）。
+    """动态调整学习计划（核心差异化能力，AI 决策 + 确定性排程）。
 
-    三条件评估（未完成 ∧ (截止临近 ∨ 时长不足)）→ 新建版本
-    （parent_plan_id 指向旧版，形成备份链）+ 具体 adjust_reason +
-    结构化 diff 随返；无可调整项时返回 adjusted=false 不新建版本。
+    AI 判断是否需要调整、调整哪些条目及原因 → 新建版本
+    （parent_plan_id 指向旧版，形成备份链）+ adjust_reason +
+    结构化 diff 随返；无需调整时返回 adjusted=false 不新建版本；
+    AI 不可用或输出不合法时返回 3000/HTTP 502，计划保持不变。
 
     Args:
         plan_id: 目标计划 id（仅限本人，越权 404/1005）。

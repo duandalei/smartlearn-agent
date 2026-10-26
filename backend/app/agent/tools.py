@@ -788,7 +788,10 @@ async def generate_learning_plan(
 async def adjust_learning_plan(
     db: Session, user_id: int, params: AdjustLearningPlanParams
 ) -> ToolResult:
-    """调整学习计划生成新版本（薄委托 services/plan.adjust_plan，零 LLM）。
+    """调整学习计划生成新版本（薄委托 services/plan.adjust_plan）。
+
+    调整由 LLM 判断是否需要调整及调整哪些条目，排程由确定性引擎完成；
+    AI 不可用或输出不合法时抛 BizException(3000)。
 
     plan_id 缺省定位当前 active；无 active 时服务层抛 BizException(1007)
     由装饰器转为 error 信封。
