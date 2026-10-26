@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.core.config import PROJECT_ROOT
 from app.rag.loader import ParsedDocument, Section, load_document
 from app.rag.splitter import (
     CHUNK_OVERLAP,
@@ -91,7 +90,7 @@ def test_empty_sections_yield_no_chunks() -> None:
 
 def test_real_ml_basics_document() -> None:
     """真实样例：1_ml_basics.md 切分 8~12 块且含第六章路径节点。"""
-    path = PROJECT_ROOT / "data" / "uploads" / "1" / "1_ml_basics.md"
+    path = Path(__file__).resolve().parent / "fixtures" / "uploads" / "1_ml_basics.md"
     doc = load_document(Path(path), "md")
     chunks = split_document(doc)
     assert 8 <= len(chunks) <= 12, f"分块数超出预估区间: {len(chunks)}"
