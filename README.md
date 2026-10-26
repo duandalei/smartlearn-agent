@@ -193,8 +193,7 @@ start.bat
    ```
 2. **前端**：访问 http://localhost:5173，直接进入主布局（本地单用户，无需登录），左侧菜单可切换各页面。
 3. **统一错误提示**：后端未启动时，前端操作会通过统一拦截器弹出「网络异常，请稍后重试」而非白屏。
-4. **后端自动化测试**：`cd backend && pytest -q`（当前基线 202 passed）。
-5. **前端构建**：`cd frontend && npm run build`（vue-tsc + vite，应 exit 0）。
+4. **前端构建**：`cd frontend && npm run build`（vue-tsc + vite，应 exit 0）。
 
 ---
 
