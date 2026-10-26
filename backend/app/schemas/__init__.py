@@ -6,7 +6,7 @@ P2 仅有出参（Out）模型；写接口入参（Create / Update）随 P3+ 在
 
 from __future__ import annotations
 
-from app.schemas.common import PageData, PaginationParams
+from app.schemas.common import PaginationParams
 from app.schemas.user import UserOut, UserProfileOut
 from app.schemas.goal import GoalOut
 from app.schemas.plan import PlanItemOut, PlanOut
@@ -20,7 +20,6 @@ from app.schemas.agent import ConversationOut, MessageOut
 from app.schemas.report import ReportOut
 
 __all__ = [
-    "PageData",
     "PaginationParams",
     "UserOut",
     "UserProfileOut",

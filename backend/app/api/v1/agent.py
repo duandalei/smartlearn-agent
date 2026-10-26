@@ -24,8 +24,6 @@ SSE 格式化必须在 api 层（契约 §4「services/agent 禁拼接 HTTP 响�
 
 from __future__ import annotations
 
-import json
-from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
@@ -35,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.agent import core, memory
 from app.api.deps import get_current_user, get_db
 from app.core.response import success
+from app.core.sse import format_sse
 from app.models.user import User
 from app.schemas.agent import (
     AgentChatIn,
@@ -147,19 +146,8 @@ async def agent_chat(
         db, current_user.id, conversation, payload.message
     )
 
-    async def _sse_format(
-        event_stream: AsyncIterator[dict[str, Any]],
-    ) -> AsyncIterator[str]:
-        """把事件 dict 流格式化为 SSE 文本（``data: {JSON}\\n\\n``）。
-
-        ``json.dumps(..., ensure_ascii=False)`` 保证中文原样传输
-        （P9 chat.py 同款闭包复刻）。
-        """
-        async for event in event_stream:
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-
     return StreamingResponse(
-        _sse_format(events),
+        format_sse(events),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache"},
     )

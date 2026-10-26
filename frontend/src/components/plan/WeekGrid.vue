@@ -15,7 +15,7 @@
 import { computed } from 'vue'
 
 import type { ItemHighlight, Plan, PlanItem } from '@/types/plan'
-import { buildWeekGrid, formatHm } from '@/utils/plan'
+import { WEEK_SLOTS, buildWeekGrid, formatHm } from '@/utils/plan'
 
 const props = withDefaults(
   defineProps<{
@@ -30,11 +30,8 @@ const props = withDefaults(
 )
 
 /** 三时段行（行头 label + slots 键；渲染序与 design 2.2.2-(9) 一致）。 */
-const SLOT_ROWS = [
-  { key: 'morning', label: '上午' },
-  { key: 'afternoon', label: '下午' },
-  { key: 'evening', label: '晚上' },
-] as const
+const SLOT_KEYS = ['morning', 'afternoon', 'evening'] as const
+const SLOT_ROWS = SLOT_KEYS.map((key, i) => ({ key, label: WEEK_SLOTS[i] }))
 
 /** 7 列网格（date/label/slots/rests；越界条目已被纯函数剔除）。 */
 const columns = computed(() => buildWeekGrid(props.plan, props.items))

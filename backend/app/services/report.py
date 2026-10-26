@@ -24,6 +24,7 @@ import json
 import logging
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone, tzinfo
+from time import monotonic
 from typing import Any
 
 from sqlalchemy import func, select
@@ -446,13 +447,14 @@ async def generate_report(
             "report_stats_failed user_id=%s type=%s err=%s",
             user_id,
             data.report_type,
-            type(exc).__name__,
+            f"{type(exc).__name__}: {exc}",
+            exc_info=True,
         )
         raise BizException(5000, "报告统计生成失败，请稍后重试", 500) from None
 
     summary: str | None = None
     generated_by = "template"
-    started = asyncio.get_event_loop().time()
+    started = monotonic()
     try:
         text = await asyncio.wait_for(
             llm.chat(_summary_messages(stats, data.report_type, start, end)),
@@ -462,7 +464,7 @@ async def generate_report(
             summary = text.strip()
             generated_by = "llm"
     except (asyncio.TimeoutError, BizException, ValueError) as exc:
-        elapsed = asyncio.get_event_loop().time() - started
+        elapsed = monotonic() - started
         logger.warning(
             "report_llm_fallback user_id=%s type=%s err_type=%s elapsed_s=%.2f",
             user_id,

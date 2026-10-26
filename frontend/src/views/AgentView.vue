@@ -10,7 +10,7 @@
  * 路由与 MainLayout 零改动（O7——router/index.ts:73-78 既有注册）。
  * 布局复刻 P9「页面不滚动、消息区内部滚动」三件套约束。
  */
-import { nextTick, onMounted, reactive, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 
@@ -651,6 +651,11 @@ onMounted(() => {
     }
   })()
 })
+
+/** 离开页面时中止进行中的流式请求，避免后台继续消耗 API 额度。 */
+onBeforeUnmount(() => {
+  abortController?.abort()
+})
 </script>
 
 <template>
@@ -708,7 +713,7 @@ onMounted(() => {
         <div v-else class="message-list" v-loading="messagesLoading">
           <MessageItem
             v-for="(message, idx) in messages"
-            :key="idx"
+            :key="`${currentConversation?.id ?? 'draft'}-${idx}`"
             :message="message"
             :is-continuation="idx > 0 && messages[idx - 1]?.kind === 'assistant'"
             @card-toggle="onCardToggle"

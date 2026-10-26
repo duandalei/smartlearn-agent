@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
-
 from pydantic import BaseModel, ConfigDict, Field
-
-ItemT = TypeVar("ItemT")
 
 
 class PaginationParams(BaseModel):
@@ -23,19 +19,3 @@ class PaginationParams(BaseModel):
     page_size: int = Field(
         default=10, ge=1, le=100, description="每页条数，1~100"
     )
-
-
-class PageData(BaseModel, Generic[ItemT]):
-    """列表端点 ``data`` 固定结构：``{items, total, page, page_size}``。
-
-    Attributes:
-        items: 当前页数据列表。
-        total: 满足条件的总记录数。
-        page: 当前页码。
-        page_size: 每页条数。
-    """
-
-    items: list[ItemT]
-    total: int
-    page: int
-    page_size: int

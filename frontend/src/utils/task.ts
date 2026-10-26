@@ -53,11 +53,11 @@ export function isTaskOverdue(task: Task, now: Date = new Date()): boolean {
   return new Date(task.deadline).getTime() < now.getTime()
 }
 
-/** 优先级 tag 类型（high=danger / medium=warning / low=info）。 */
-export function priorityTagType(p: TaskPriority): 'danger' | 'warning' | 'info' {
-  if (p === 'high') return 'danger'
-  if (p === 'medium') return 'warning'
-  return 'info'
+/** 优先级显示名（任务列表与看板共用）。 */
+export const PRIORITY_LABEL: Record<TaskPriority, string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
 }
 
 /** 看板列固定顺序（裁定⑫：todo / in_progress / done / review）。 */

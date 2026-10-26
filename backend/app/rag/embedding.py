@@ -47,7 +47,6 @@ from collections import Counter
 from typing import Literal
 
 from app.core.config import settings
-from app.core.response import BizException
 from app.services.llm import get_embedding_client
 
 logger = logging.getLogger(__name__)
@@ -138,7 +137,7 @@ async def embed_texts_online(texts: list[str]) -> list[list[float]]:
                 ordered = sorted(response.data, key=lambda d: d.index)
                 vectors.extend([list(d.embedding) for d in ordered])
             return vectors
-        except (BizException, Exception) as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             # BizException(3000)=配置缺失；其余为 SDK/网络/上游异常，
             # 一律视为在线不可用信号（不外透原始异常）。
             last_reason = f"{type(exc).__name__}: {str(exc)[:200]}"

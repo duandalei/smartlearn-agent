@@ -20,11 +20,6 @@ export interface PageResult<T = unknown> {
   page_size: number
 }
 
-/** 健康检查返回的 data。 */
-export interface HealthData {
-  status: string
-}
-
 /** 当前本地用户信息（对齐后端 UserOut，不含密码相关字段）。 */
 export interface UserInfo {
   id: number

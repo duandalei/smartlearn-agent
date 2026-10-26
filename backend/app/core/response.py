@@ -14,6 +14,7 @@ PROJECT_CONTEXT 5.2 规定：所有接口（含错误）必须返回统一结构
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import FastAPI, Request, status
@@ -22,12 +23,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # 业务错误码（PROJECT_CONTEXT 5.4）
 # ---------------------------------------------------------------------------
 CODE_SUCCESS: int = 0
 CODE_PARAM_INVALID: int = 1001          # 参数校验失败 -> 422
-CODE_AUTH_FAILED: int = 1002            # 用户名或密码错误 -> 401
 CODE_TOKEN_INVALID: int = 1003          # Token 无效或已过期 -> 401
 CODE_FORBIDDEN: int = 1004              # 无权限访问该资源 -> 403
 CODE_NOT_FOUND: int = 1005              # 资源不存在 -> 404
@@ -221,8 +223,9 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _handle_unexpected_exception(
         request: Request, exc: Exception
     ) -> JSONResponse:
-        """兜底处理未捕获异常，避免返回裸 500。"""
+        """兜底处理未捕获异常，避免返回裸 500（异常详情只进日志）。"""
+        logger.exception("unhandled_exception path=%s", request.url.path)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=error(CODE_INTERNAL_ERROR, f"服务器内部错误: {exc}"),
+            content=error(CODE_INTERNAL_ERROR, "服务器内部错误"),
         )

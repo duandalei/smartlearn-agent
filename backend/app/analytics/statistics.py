@@ -9,7 +9,7 @@ overview 七指标：累计学习时长、任务完成率、平均掌握度、�
 
 from __future__ import annotations
 
-from datetime import date, timedelta, timezone
+from datetime import date, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
@@ -23,7 +23,7 @@ from app.models.task import Task
 from app.schemas.dashboard import OverviewOut
 
 try:
-    TZ_BEIJING: timezone = ZoneInfo("Asia/Shanghai")
+    TZ_BEIJING: tzinfo = ZoneInfo("Asia/Shanghai")
 except ZoneInfoNotFoundError:  # pragma: no cover —— Windows 无 tzdata 环境
     TZ_BEIJING = timezone(timedelta(hours=8), "+08:00")
 
@@ -76,7 +76,7 @@ def get_overview(db: Session, user_id: int) -> dict:
                 Task.user_id == user_id,
                 Task.deadline.is_not(None),
                 Task.deadline < now,
-                Task.status != TaskStatus.DONE,
+                Task.status.in_([TaskStatus.TODO, TaskStatus.IN_PROGRESS]),
             )
         )
         or 0

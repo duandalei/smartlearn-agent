@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta, timezone
+from datetime import date, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
@@ -19,7 +19,7 @@ from app.models.record import LearningRecord
 from app.schemas.dashboard import RiskAlertOut, TrendItemOut, TrendOut
 
 try:
-    TZ_BEIJING: timezone = ZoneInfo("Asia/Shanghai")
+    TZ_BEIJING: tzinfo = ZoneInfo("Asia/Shanghai")
 except ZoneInfoNotFoundError:  # pragma: no cover —— Windows 无 tzdata 环境
     TZ_BEIJING = timezone(timedelta(hours=8), "+08:00")
 

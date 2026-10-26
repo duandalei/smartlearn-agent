@@ -1,11 +1,5 @@
 """业务逻辑层（services）。
 
-P2 仅提供只读查询助手 ``readonly``；各资源的业务 service 随
-P3+ 写接口阶段按需建立。
+各资源 service 按领域分文件，调用方直接从具体子模块导入
+（如 ``from app.services import llm`` 或 ``from app.services.task import ...``）。
 """
-
-from __future__ import annotations
-
-from app.services.readonly import get_by_id_or_404, paginate
-
-__all__ = ["get_by_id_or_404", "paginate"]

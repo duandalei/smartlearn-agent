@@ -31,6 +31,7 @@ import json
 import logging
 import re
 from datetime import date, datetime, time, timedelta, timezone, tzinfo
+from time import monotonic
 from typing import Any, Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -415,7 +416,7 @@ async def generate_plan(
     messages = _plan_prompt(
         capacity, roadmap_leaves, weak_points, task_pool, interests, period_label
     )
-    started = asyncio.get_event_loop().time()
+    started = monotonic()
     try:
         candidates = await asyncio.wait_for(
             _fetch_candidates_with_retry(messages, valid_task_ids, task_deadlines),
@@ -423,7 +424,7 @@ async def generate_plan(
         )
         generated_by = "llm"
     except (asyncio.TimeoutError, BizException, _ParseFailed, ValueError) as exc:
-        elapsed = asyncio.get_event_loop().time() - started
+        elapsed = monotonic() - started
         logger.warning(
             "plan_llm_fallback user_id=%s type=%s elapsed_s=%.2f",
             user_id,

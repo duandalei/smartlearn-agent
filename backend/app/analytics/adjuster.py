@@ -68,7 +68,7 @@ class TaskSnapshot:
 class ItemSnapshot:
     """旧版条目只读快照（调整输入；亦可由新版条目读出后重算 diff）。"""
 
-    item_id: int | None
+    item_id: int
     plan_date: date
     start_time: time | None
     end_time: time | None
@@ -333,19 +333,19 @@ def apply_adjustment(
     capacity = context.daily_capacity
 
     drop_set = drop_set or []
-    move_ids = {id(item) for item in move_set}
-    drop_ids = {id(item) for item in drop_set}
+    move_ids = {item.item_id for item in move_set}
+    drop_ids = {item.item_id for item in drop_set}
     keepers = [
         item
         for item in context.items
-        if id(item) not in move_ids and id(item) not in drop_ids
+        if item.item_id not in move_ids and item.item_id not in drop_ids
     ]
 
     occupied: dict[date, list[tuple[time, time]]] = {d: [] for d in context.week_days}
     used: dict[date, int] = {d: 0 for d in context.week_days}
     layouts: dict[int, NewItemLayout] = {}
     for item in keepers:
-        layouts[id(item)] = _to_layout(item)
+        layouts[item.item_id] = _to_layout(item)
         if item.start_time is not None and item.end_time is not None:
             occupied.setdefault(item.plan_date, []).append(
                 (item.start_time, item.end_time)
@@ -378,7 +378,7 @@ def apply_adjustment(
             if freed >= needed:
                 break
             est = sacrifice.estimated_minutes or 60
-            layout = layouts[id(sacrifice)]
+            layout = layouts[sacrifice.item_id]
             if sacrifice.start_time is not None and sacrifice.end_time is not None:
                 occupied[day] = [
                     slot

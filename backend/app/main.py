@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router, health_router
 from app.core.config import settings
-from app.core.response import success
+from app.core.response import register_exception_handlers, success
 from app.db.migrate import ensure_schema_upgrades
 from app.db.session import engine
 
@@ -48,8 +48,6 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # 全局异常处理器：保证任何异常都返回统一响应体。
 # ---------------------------------------------------------------------------
-from app.core.response import register_exception_handlers  # noqa: E402
-
 register_exception_handlers(app)
 
 # ---------------------------------------------------------------------------

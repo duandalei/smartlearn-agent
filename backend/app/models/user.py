@@ -19,7 +19,7 @@ class User(TimestampMixin, Base):
         id: 主键，自增。
         username: 登录名，全局唯一。
         email: 邮箱，唯一（可空，SQLite 允许多个 NULL）。
-        hashed_password: 密码哈希（PBKDF2，见 core/security.py），禁止存明文。
+        hashed_password: 非空占位字段（本地单用户不参与登录校验）。
         is_active: 是否启用，禁用后不可登录。
     """
 
@@ -33,7 +33,7 @@ class User(TimestampMixin, Base):
         String(120), unique=True, nullable=True, comment="邮箱，唯一"
     )
     hashed_password: Mapped[str] = mapped_column(
-        String(255), nullable=False, comment="密码哈希（PBKDF2）"
+        String(255), nullable=False, comment="非空占位字段"
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, comment="是否启用"

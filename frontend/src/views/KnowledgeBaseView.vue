@@ -64,6 +64,13 @@ async function consumeLocateQuery(): Promise<void> {
   }
 }
 
+/**
+ * 条件轮询判定：仅看当前页。
+ *
+ * 取舍：后端列表接口不提供状态筛选，轮询到「是否还有处理中文档」需
+ * 额外拉取全量；当前页轮询已覆盖「上传后置顶处理」的主路径，翻页后
+ * 处理中文档暂不自动刷新，翻回该页即恢复。
+ */
 function shouldPoll(list: KnowledgeItem[]): boolean {
   return list.some((item) => isKbProcessing(item.status))
 }

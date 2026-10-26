@@ -210,6 +210,8 @@ async def _test_chat(base_url: str, api_key: str, model: str) -> dict[str, Any]:
             "model": model,
             "error": f"对话连接失败（模型可能不支持 tool calling）：{_short_error(exc)}",
         }
+    finally:
+        await client.close()
 
 
 async def _test_embedding(base_url: str, api_key: str, model: str) -> dict[str, Any]:
@@ -237,6 +239,8 @@ async def _test_embedding(base_url: str, api_key: str, model: str) -> dict[str, 
             "model": model,
             "error": f"向量连接失败（服务商需支持 /v1/embeddings）：{_short_error(exc)}",
         }
+    finally:
+        await client.close()
 
 
 def _short_error(exc: Exception) -> str:

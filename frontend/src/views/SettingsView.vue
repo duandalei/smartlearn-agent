@@ -74,6 +74,8 @@ async function load(): Promise<void> {
     form.embedding_model = data.embedding.model
     form.llm_api_key = ''
     form.embedding_api_key = ''
+  } catch {
+    // 错误提示由 request.ts 拦截器统一弹出。
   } finally {
     loading.value = false
   }
@@ -91,6 +93,8 @@ async function onSave(): Promise<void> {
     form.embedding_api_key = ''
     testResult.value = null
     ElMessage.success('配置已保存，立即生效')
+  } catch {
+    // 错误提示由 request.ts 拦截器统一弹出。
   } finally {
     saving.value = false
   }
@@ -102,6 +106,8 @@ async function onTest(): Promise<void> {
   testResult.value = null
   try {
     testResult.value = await testLlmSettings({ ...form })
+  } catch {
+    // 错误提示由 request.ts 拦截器统一弹出。
   } finally {
     testing.value = false
   }

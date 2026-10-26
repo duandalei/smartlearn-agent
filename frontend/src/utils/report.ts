@@ -61,7 +61,7 @@ export function formatCreatedAtLocal(iso: string): string {
 }
 
 /** 差值带符号格式化（正负号语义保留，spec §6.7-6；0 输出 '0'）。 */
-function signed(n: number): string {
+export function signed(n: number): string {
   return n > 0 ? `+${n}` : `${n}`
 }
 

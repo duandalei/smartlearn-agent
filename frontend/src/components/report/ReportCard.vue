@@ -14,6 +14,7 @@ import {
   formatCreatedAtLocal,
   generatedByLabel,
   REPORT_TYPE_LABELS,
+  signed,
 } from '@/utils/report'
 
 const props = defineProps<{
@@ -41,10 +42,6 @@ function scoreText(score: unknown): string {
 
 function badgeText(): string | null {
   return generatedByLabel(props.report.content?.generated_by)
-}
-
-function signed(n: number): string {
-  return n > 0 ? `+${n}` : `${n}`
 }
 
 function deltaClass(n: number): string {

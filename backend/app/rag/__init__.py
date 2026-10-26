@@ -25,4 +25,8 @@ rag/splitter.py   rag/splitter.py（一致）
 
 分层约束（契约 §4）：本包不 import api / services（单向依赖
 services → rag），不与业务事务耦合。
+
+唯一显式豁免：``embedding`` 为复用唯一在线客户端而 import
+``app.services.llm``（design.md 2.1.2 架构图 rag_embed --> svc_llm，
+依据 spec 4.5 规则 1 的客户端锁定条款）。
 """

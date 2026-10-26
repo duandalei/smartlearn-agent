@@ -9,7 +9,7 @@ AND mastery_score=0)——目标拆解产出的零分待学点是「已规划、
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date, timedelta, timezone
+from datetime import date, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
@@ -27,7 +27,7 @@ from app.schemas.dashboard import (
 )
 
 try:
-    TZ_BEIJING: timezone = ZoneInfo("Asia/Shanghai")
+    TZ_BEIJING: tzinfo = ZoneInfo("Asia/Shanghai")
 except ZoneInfoNotFoundError:  # pragma: no cover —— Windows 无 tzdata 环境
     TZ_BEIJING = timezone(timedelta(hours=8), "+08:00")
 

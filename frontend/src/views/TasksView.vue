@@ -35,6 +35,7 @@ import type {
 } from '@/types'
 import { normalizeKnowledgePoints } from '@/utils/knowledge'
 import {
+  PRIORITY_LABEL,
   TASK_STATUS_LABELS,
   formatDeadline,
   isTaskOverdue,
@@ -303,12 +304,6 @@ function rowClassName({ row }: { row: Task }): string {
 function courseName(courseId: number | null): string {
   if (courseId == null) return '—'
   return courseNameMap.value.get(courseId) ?? '—'
-}
-
-const PRIORITY_LABEL: Record<TaskPriority, string> = {
-  high: '高',
-  medium: '中',
-  low: '低',
 }
 
 function priorityLabel(priority: TaskPriority): string {

@@ -12,6 +12,7 @@ import type { Task, TaskBoardData, TaskStatus } from '@/types'
 import { normalizeKnowledgePoints } from '@/utils/knowledge'
 import {
   BOARD_COLUMNS,
+  PRIORITY_LABEL,
   TASK_STATUS_LABELS,
   formatDeadline,
   isTaskOverdue,
@@ -44,12 +45,6 @@ const COLUMN_TONE: Record<TaskStatus, string> = {
   in_progress: 'is-ochre',
   done: 'is-jade',
   review: 'is-vermilion',
-}
-
-const PRIORITY_LABEL: Record<Task['priority'], string> = {
-  high: '高',
-  medium: '中',
-  low: '低',
 }
 
 async function reload(): Promise<void> {

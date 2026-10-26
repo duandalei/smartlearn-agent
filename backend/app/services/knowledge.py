@@ -43,7 +43,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -342,8 +342,11 @@ async def process_document(item_id: int) -> None:
     # 在 embedding 层内部降级，此处仅兜底也异常的防御性分支）。
     contents = [chunk["content"] for chunk in chunks]
     try:
-        local_vectors = embed_texts_local(contents)
         online_vectors, mode = await embed_texts_with_fallback(contents)
+        # 离线兜底向量已由 embedding 层返回，直接复用，避免重复计算。
+        local_vectors = (
+            online_vectors if mode == "offline" else embed_texts_local(contents)
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "向量化彻底失败: item_id=%s type=%s", item_id, type(exc).__name__
