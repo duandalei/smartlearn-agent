@@ -11,8 +11,8 @@
 ## 零、快速开始（推荐）
 
 ```bat
-git clone <仓库地址> smartlearn
-cd smartlearn
+git clone https://github.com/duandalei/smartlearn-agent.git
+cd smartlearn-agent
 setup.bat
 start.bat
 ```
@@ -20,9 +20,6 @@ start.bat
 浏览器打开 http://localhost:5173 ：
 
 - **打开即用**：本地单用户，无需注册 / 登录，直接进入首页记录学习。
-
-> 给 AI Agent 的配置说明见 [`AGENTS.md`](AGENTS.md)——也可以直接把仓库交给 AI，
-> 说一句「帮我配置这个项目」。
 
 ---
 
@@ -79,7 +76,7 @@ start.bat
 ## 二、目录结构（骨架）
 
 ```
-smartlearn/
+smartlearn-agent/
 ├── backend/                # FastAPI 后端
 │   ├── app/
 │   │   ├── api/v1/         # 路由层（health / 后续业务模块）
@@ -101,7 +98,6 @@ smartlearn/
 ├── data/                   # 运行时数据（不进版本库）
 ├── setup.bat               # 一键配置环境
 ├── scripts/                # setup_env.py（配置脚本）
-├── AGENTS.md               # 给 AI 的配置说明
 ├── start.bat               # 一键启动（先后端后前端）
 └── README.md
 ```
@@ -131,6 +127,23 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 **一条命令启动后端（Windows）**：`backend\run.bat`
+
+### 配置模型 API（可选）
+
+编辑 `backend/.env`，按需填写 OpenAI 兼容接口：
+
+```env
+LLM_BASE_URL=
+LLM_API_KEY=
+LLM_MODEL=
+# 向量化可独立配置；留空则逐项回退 LLM_*
+EMBEDDING_BASE_URL=
+EMBEDDING_API_KEY=
+EMBEDDING_MODEL=
+```
+
+不配置也能正常使用目标、任务、学习记录与计划查看；AI 问答与在线向量化会提示未配置，
+知识库索引会走本地兜底向量。
 
 ---
 
@@ -195,7 +208,7 @@ start.bat
 ## 九、FAQ（常见问题）
 
 1. **端口被占用（8000 / 5173）**：`netstat -ano | findstr :8000` 找到 PID，结束后端进程后重试。
-2. **LLM / Embedding key 未配置或失效**：`backend/.env` 需配置对话组 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`（OpenAI 兼容协议，如 DeepSeek）、向量化组 `EMBEDDING_*`（如硅基流动 BAAI/bge-m3，`EMBEDDING_*` 为空时逐项回退 `LLM_*`）。LLM 不可用时计划/报告走规则与模板降级，页面功能不受影响； Embedding 不可用时知识库索引走本地兜底模型。
+2. **LLM / Embedding key 未配置或失效**：见 [配置模型 API（可选）](#配置模型-api可选)。对话组 `LLM_*` 为 OpenAI 兼容协议（如 DeepSeek），向量化组 `EMBEDDING_*` 可独立指向其他服务（如硅基流动 BAAI/bge-m3），留空时逐项回退 `LLM_*`。LLM 不可用时计划/报告走规则与模板降级，页面功能不受影响；Embedding 不可用时知识库索引走本地兜底模型。
 3. **SQLite 数据库被锁定（database is locked）**：通常是后端仍在运行时手工改库——先停后端再操作。
 4. **Windows 中文路径 / 终端编码**：项目路径含中文不影响运行（本仓库即在中文用户名目录下开发验证）；若终端打印乱码，将终端代码页切为 UTF-8（`chcp 65001`）或使用 Windows Terminal。
 
