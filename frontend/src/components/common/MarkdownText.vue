@@ -25,116 +25,155 @@ const html = computed(() => renderMarkdown(props.content ?? ''))
 .markdown-body {
   white-space: normal;
   word-break: break-word;
-  line-height: 1.7;
+  line-height: 1.78;
+  color: var(--ink-2);
 }
+
 .markdown-body :deep(p) {
   margin: 0 0 8px;
 }
+
 .markdown-body :deep(p:last-child) {
   margin-bottom: 0;
 }
+
 .markdown-body :deep(h1),
 .markdown-body :deep(h2),
 .markdown-body :deep(h3),
 .markdown-body :deep(h4),
 .markdown-body :deep(h5),
 .markdown-body :deep(h6) {
-  margin: 14px 0 6px;
+  margin: 16px 0 7px;
+  font-family: var(--font-display);
   font-weight: 600;
-  line-height: 1.4;
-  color: var(--el-text-color-primary);
+  line-height: 1.45;
+  color: var(--ink);
 }
+
 .markdown-body :deep(h1) {
-  font-size: 18px;
+  font-size: 19px;
 }
+
 .markdown-body :deep(h2) {
-  font-size: 16px;
+  font-size: 17px;
 }
+
 .markdown-body :deep(h3) {
   font-size: 15px;
 }
+
 .markdown-body :deep(h4),
 .markdown-body :deep(h5),
 .markdown-body :deep(h6) {
   font-size: 14px;
 }
+
 .markdown-body :deep(h1:first-child),
 .markdown-body :deep(h2:first-child),
 .markdown-body :deep(h3:first-child) {
   margin-top: 0;
 }
+
 .markdown-body :deep(ul),
 .markdown-body :deep(ol) {
-  margin: 4px 0 8px;
+  margin: 4px 0 9px;
   padding-left: 20px;
 }
+
 .markdown-body :deep(li) {
   margin: 3px 0;
 }
+
+.markdown-body :deep(li::marker) {
+  color: var(--vermilion);
+}
+
 .markdown-body :deep(strong) {
   font-weight: 600;
+  color: var(--ink);
 }
+
 .markdown-body :deep(em) {
   font-style: italic;
 }
+
 .markdown-body :deep(del) {
-  color: var(--el-text-color-secondary);
+  color: var(--ink-3);
 }
+
 .markdown-body :deep(code) {
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--el-fill-color);
-  font-family: Consolas, Monaco, 'Courier New', monospace;
-  font-size: 13px;
+  padding: 1px 5px;
+  border-radius: var(--radius);
+  background: var(--paper-3);
+  border: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
 }
+
 .markdown-body :deep(pre) {
-  margin: 8px 0;
-  padding: 8px 10px;
+  margin: 9px 0;
+  padding: 10px 12px;
   overflow-x: auto;
-  border-radius: 4px;
-  background: var(--el-fill-color-light);
+  border-radius: var(--radius);
+  background: var(--paper-3);
+  border: 1px solid var(--line);
 }
+
 .markdown-body :deep(pre code) {
   padding: 0;
   background: transparent;
+  border: none;
   white-space: pre;
 }
+
 .markdown-body :deep(blockquote) {
-  margin: 8px 0;
-  padding: 2px 0 2px 10px;
-  border-left: 3px solid var(--el-color-info);
-  color: var(--el-text-color-secondary);
+  margin: 9px 0;
+  padding: 9px 12px;
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-3);
 }
+
 .markdown-body :deep(blockquote p) {
   margin: 0;
 }
+
 .markdown-body :deep(hr) {
-  margin: 12px 0;
+  margin: 14px 0;
   border: 0;
-  border-top: 1px solid var(--el-border-color-lighter);
+  border-top: 1px solid var(--line);
 }
+
 .markdown-body :deep(a) {
-  color: var(--el-color-primary);
+  color: var(--vermilion);
   text-decoration: none;
+  text-underline-offset: 3px;
 }
+
 .markdown-body :deep(a:hover) {
   text-decoration: underline;
 }
+
 .markdown-body :deep(table) {
   width: 100%;
-  margin: 8px 0;
+  margin: 9px 0;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 12px;
 }
+
 .markdown-body :deep(th),
 .markdown-body :deep(td) {
-  padding: 4px 6px;
-  border: 1px solid var(--el-border-color-lighter);
+  padding: 5px 7px;
+  border: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
 }
+
 .markdown-body :deep(th) {
-  background: var(--el-fill-color-light);
+  background: var(--paper-3);
   font-weight: 600;
+  color: var(--ink);
 }
 </style>

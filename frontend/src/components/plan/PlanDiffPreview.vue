@@ -1,19 +1,7 @@
 <script setup lang="ts">
 /**
- * diff 预览双栏对比（P13；design 2.4.4 / D6 / D13；spec §5.3.1 规则 2/3/6，裁定 #2）。
- *
- * 四段结构：① adjust_reason 显著卡片 ② 双栏 WeekGrid（compact + highlights）
- * ③ 结构化改动清单 ④ 操作区。「查看调整后的计划」（primary）与「关闭对比」
- * （close）共用同一 confirm 出口、以 source 参数区分路径（关闭路径父组件追加
- * 「新计划已生效」提示，spec §5.3.1 规则 6；ESC 与「关闭对比」同路径）；
- * 不提供任何回退调整的操作。
- *
- * 数据来源铁律（spec §5.3.1 规则 4-⑤）：右栏条目一律为 pending.items
- * （服务端取回），严禁用 oldItems + diff 前端重建。
- *
- * 高亮下标映射：markDiffHighlights 的 key 是各栏 items 数组下标——分别对
- * oldItems / items 调用并传入对应 WeekGrid，由 WeekGrid 内部按对象引用回溯
- * 下标，禁止把 item.id 当 key。
+ * 调整结果预览：左旧右新双栏对比 + 结构化改动清单。
+ * 右栏条目一律来自服务端 pending.items，禁止前端重建。
  */
 import { computed, onMounted, onUnmounted } from 'vue'
 
@@ -29,29 +17,24 @@ const emit = defineEmits<{
   (e: 'confirm', source: 'primary' | 'close'): void
 }>()
 
-/** ESC 与「关闭对比」同路径（source='close'，父组件提示「新计划已生效」）。 */
 function onKeydown(e: KeyboardEvent): void {
   if (e.key === 'Escape') emit('confirm', 'close')
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
-/** 左栏（原计划）高亮：moved 标「移出」、removed 标「移除」。 */
 const oldHighlights = computed(() =>
   markDiffHighlights(props.pending.oldItems, props.pending.diff, 'old'),
 )
-/** 右栏（新计划）高亮：moved 标「移入」、added 标「新增」。 */
 const newHighlights = computed(() =>
   markDiffHighlights(props.pending.items, props.pending.diff, 'new'),
 )
 
-/** 三类清单是否全空（spec §5.3.3 场景 3：显示「本次调整无条目变动」）。 */
 const isDiffEmpty = computed(() => {
   const d = props.pending.diff
   return d.moved.length === 0 && d.added.length === 0 && d.removed.length === 0
 })
 
-/** 时间位展示：null → 「休息时段」；否则 formatHm 截取 'HH:MM'。 */
 function hmOrRest(t: string | null): string {
   return t == null ? '休息时段' : formatHm(t)
 }
@@ -59,16 +42,25 @@ function hmOrRest(t: string | null): string {
 
 <template>
   <div class="diff-preview">
-    <!-- ① 调整理由显著卡片（禁止折叠默认隐藏） -->
+    <div class="head-row">
+      <div>
+        <div class="panel-kicker">计划调整预览</div>
+        <h2 class="panel-title">调整后的计划</h2>
+      </div>
+      <span class="head-version">v{{ pending.plan.version }}</span>
+    </div>
+
     <div class="reason-card">
       <div class="reason-title">调整说明</div>
       <div class="reason-text">{{ pending.adjustReason ?? '本次调整未提供说明' }}</div>
     </div>
 
-    <!-- ② 双栏对比（compact 缩略 + 高亮） -->
     <div class="dual-pane">
-      <div class="pane">
-        <div class="pane-title">原计划（v{{ pending.plan.version - 1 }}）</div>
+      <section class="pane">
+        <div class="pane-title">
+          <span>原计划</span>
+          <span class="pane-version">v{{ pending.plan.version - 1 }}</span>
+        </div>
         <WeekGrid
           :plan="pending.plan"
           :items="pending.oldItems"
@@ -76,11 +68,11 @@ function hmOrRest(t: string | null): string {
           :highlights="oldHighlights"
           highlight-side="old"
         />
-      </div>
-      <div class="pane">
+      </section>
+      <section class="pane">
         <div class="pane-title">
-          新计划
-          <el-tag size="small" type="primary" effect="plain">v{{ pending.plan.version }}</el-tag>
+          <span>新计划</span>
+          <span class="pane-version is-new">v{{ pending.plan.version }}</span>
         </div>
         <WeekGrid
           :plan="pending.plan"
@@ -89,30 +81,42 @@ function hmOrRest(t: string | null): string {
           :highlights="newHighlights"
           highlight-side="new"
         />
+      </section>
+    </div>
+
+    <div class="change-section">
+      <div class="section-head">
+        <div class="section-title">条目变动</div>
+        <span class="section-note">只列出被移动、移除和新增的条目</span>
       </div>
+
+      <ul v-if="!isDiffEmpty" class="change-list">
+        <li v-for="(m, i) in pending.diff.moved" :key="`m${i}`" class="change-item">
+          <span class="change-tag is-moved">移动</span>
+          <span class="change-text">
+            {{ m.topic }}：从 {{ m.from_date }} {{ hmOrRest(m.from_time) }} 挪到
+            {{ m.to_date }} {{ hmOrRest(m.to_time) }}（{{ m.reason }}）
+          </span>
+        </li>
+        <li v-for="(r, i) in pending.diff.removed" :key="`r${i}`" class="change-item">
+          <span class="change-tag is-removed">移除</span>
+          <span class="change-text">{{ r.topic }} 被移出计划（{{ r.reason }}）</span>
+        </li>
+        <li v-for="(a, i) in pending.diff.added" :key="`a${i}`" class="change-item">
+          <span class="change-tag is-added">新增</span>
+          <span class="change-text">新增：{{ a.topic }}（{{ a.reason }}）</span>
+        </li>
+      </ul>
+      <div v-else class="change-empty">本次调整没有条目变动</div>
     </div>
 
-    <!-- ③ 结构化改动清单 -->
-    <div class="change-list">
-      <template v-if="!isDiffEmpty">
-        <div v-for="(m, i) in pending.diff.moved" :key="`m${i}`" class="change-item">
-          {{ m.topic }}：从 {{ m.from_date }} {{ hmOrRest(m.from_time) }} 挪到
-          {{ m.to_date }} {{ hmOrRest(m.to_time) }}（{{ m.reason }}）
-        </div>
-        <div v-for="(r, i) in pending.diff.removed" :key="`r${i}`" class="change-item">
-          {{ r.topic }} 被移出计划（{{ r.reason }}）
-        </div>
-        <div v-for="(a, i) in pending.diff.added" :key="`a${i}`" class="change-item">
-          新增：{{ a.topic }}（{{ a.reason }}）
-        </div>
-      </template>
-      <div v-else class="change-empty">本次调整无条目变动</div>
-    </div>
-
-    <!-- ④ 操作区：两个按钮共用同一 confirm 出口，source 区分路径 -->
     <div class="actions">
-      <el-button type="primary" @click="emit('confirm', 'primary')">查看调整后的计划</el-button>
+      <span class="actions-hint">按 Esc 关闭对比</span>
+      <span class="spacer" />
       <el-button plain @click="emit('confirm', 'close')">关闭对比</el-button>
+      <el-button type="primary" @click="emit('confirm', 'primary')">
+        查看调整后的计划
+      </el-button>
     </div>
   </div>
 </template>
@@ -121,61 +125,182 @@ function hmOrRest(t: string | null): string {
 .diff-preview {
   display: flex;
   flex-direction: column;
+  gap: 18px;
+}
+
+.head-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
 }
-.reason-card {
-  background: var(--el-color-warning-light-9);
-  border-left: 4px solid var(--el-color-warning);
-  border-radius: 4px;
-  padding: 12px 16px;
-}
-.reason-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  margin-bottom: 6px;
-}
-.reason-text {
-  font-size: 15px;
-  line-height: 1.7;
-  color: var(--el-text-color-primary);
-}
-.dual-pane {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
-}
-/* grid item 必须允许收缩到 0，否则 WeekGrid 的 min-width 会把右栏挤出视口；
-   各栏内部由 WeekGrid 自己的 overflow-x:auto 横向滚动。 */
-.pane {
-  min-width: 0;
-}
-.pane-title {
+
+.panel-kicker {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--vermilion);
+}
+
+.panel-kicker::before {
+  content: '';
+  width: 14px;
+  height: 1px;
+  background: var(--vermilion);
+}
+
+.panel-title {
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-size: 24px;
   font-weight: 600;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 8px;
+  line-height: 1.3;
+  color: var(--ink);
 }
+
+.head-version {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.reason-card {
+  padding: 16px;
+  background: var(--ochre-wash);
+  border: 1px solid #ddc79b;
+  border-radius: var(--radius);
+}
+
+.reason-title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: #8a6425;
+}
+
+.reason-text {
+  margin-top: 7px;
+  font-size: 14px;
+  line-height: 1.75;
+  color: #4d3a16;
+}
+
+.dual-pane {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.pane {
+  min-width: 0;
+}
+
+.pane-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.pane-version {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-4);
+}
+
+.pane-version.is-new {
+  color: var(--vermilion);
+}
+
 .change-list {
-  background: var(--el-fill-color-light);
-  border-radius: 6px;
-  padding: 12px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
+
 .change-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line-soft);
   font-size: 13px;
-  line-height: 2;
-  color: var(--el-text-color-primary);
+  line-height: 1.7;
+  color: var(--ink-2);
 }
+
+.change-item:last-child {
+  border-bottom: none;
+}
+
+.change-tag {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 17px;
+  color: var(--ink-3);
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.change-tag.is-moved {
+  color: #7a5318;
+  background: var(--ochre-wash);
+  border-color: #ddc79b;
+}
+
+.change-tag.is-added {
+  color: #33513e;
+  background: var(--jade-wash);
+  border-color: #b3c9b9;
+}
+
+.change-tag.is-removed {
+  color: #7a2a20;
+  background: var(--danger-wash);
+  border-color: #d8aaa2;
+}
+
+.change-text {
+  min-width: 0;
+}
+
 .change-empty {
+  padding: 18px 0;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: var(--ink-3);
 }
+
 .actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.actions-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-4);
+}
+
+@media (max-width: 1100px) {
+  .dual-pane {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

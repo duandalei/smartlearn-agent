@@ -11,6 +11,7 @@ import { onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { deleteGoal, fetchGoals } from '@/api/goal'
+import PageHeader from '@/components/common/PageHeader.vue'
 import GoalCard from '@/components/goal/GoalCard.vue'
 import GoalFormDialog from '@/components/goal/GoalFormDialog.vue'
 import RoadmapDrawer from '@/components/goal/RoadmapDrawer.vue'
@@ -154,44 +155,50 @@ function onBreakdownSuccess(data: GoalRoadmap): void {
 </script>
 
 <template>
-  <el-space direction="vertical" alignment="stretch" :size="16" style="width: 100%">
-    <el-card shadow="never">
-      <div class="toolbar">
-        <el-radio-group v-model="statusFilter">
-          <el-radio-button v-for="f in STATUS_FILTERS" :key="f.value" :label="f.value">
-            {{ f.label }}
-          </el-radio-button>
-        </el-radio-group>
+  <div class="page goals-view">
+    <PageHeader
+      folio="卷二 · 方向"
+      title="学习目标"
+      lead="先写清楚要去的地方，再让 AI 把它拆成可以每天执行的知识点。"
+    >
+      <template #actions>
         <el-button type="primary" @click="onCreate">新建目标</el-button>
-      </div>
-    </el-card>
+      </template>
+    </PageHeader>
 
-    <el-card shadow="never" v-loading="listLoading">
-      <el-empty
-        v-if="!listLoading && goals.length === 0"
-        description="还没有学习目标"
-      >
-        <el-button type="primary" @click="onCreate">新建目标</el-button>
-      </el-empty>
+    <div class="filter-bar">
+      <el-radio-group v-model="statusFilter" aria-label="按状态筛选目标">
+        <el-radio-button v-for="f in STATUS_FILTERS" :key="f.value" :value="f.value">
+          {{ f.label }}
+        </el-radio-button>
+      </el-radio-group>
+      <span class="filter-bar__spacer" />
+      <span class="filter-bar__hint">共 {{ total }} 个目标</span>
+    </div>
+
+    <div v-loading="listLoading" class="goals-body">
+      <div v-if="!listLoading && goals.length === 0" class="empty-note">
+        <span class="seal seal--ghost" aria-hidden="true">目</span>
+        <div class="empty-note__title">还没有写下学习目标</div>
+        <div>先写一个想去的地方，再让 AI 把它拆成知识点。</div>
+        <div class="empty-note__actions">
+          <el-button type="primary" @click="onCreate">新建目标</el-button>
+        </div>
+      </div>
+
       <template v-else>
-        <el-row :gutter="16">
-          <el-col
+        <div class="goal-grid">
+          <GoalCard
             v-for="g in goals"
             :key="g.id"
-            :xs="24"
-            :sm="12"
-            :lg="8"
-            class="card-col"
-          >
-            <GoalCard
-              :goal="g"
-              @edit="onEdit"
-              @breakdown="onBreakdown"
-              @view-roadmap="onViewRoadmap"
-              @delete="onDelete"
-            />
-          </el-col>
-        </el-row>
+            :goal="g"
+            @edit="onEdit"
+            @breakdown="onBreakdown"
+            @view-roadmap="onViewRoadmap"
+            @delete="onDelete"
+          />
+        </div>
+
         <div v-if="total > 0" class="pager-row">
           <el-pagination
             :current-page="page"
@@ -204,8 +211,8 @@ function onBreakdownSuccess(data: GoalRoadmap): void {
           />
         </div>
       </template>
-    </el-card>
-  </el-space>
+    </div>
+  </div>
 
   <GoalFormDialog v-model:visible="formVisible" :goal="editingGoal" @saved="onSaved" />
   <RoadmapDrawer
@@ -217,19 +224,25 @@ function onBreakdownSuccess(data: GoalRoadmap): void {
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+.goals-body {
+  min-height: 240px;
 }
-.card-col {
-  margin-bottom: 16px;
+
+.goal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
 }
+
 .pager-row {
   display: flex;
   justify-content: flex-end;
-  margin-top: 8px;
+  padding-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .goal-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

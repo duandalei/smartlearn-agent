@@ -146,10 +146,12 @@ function rowStatusText(row: UploadRow): string {
 
 <style scoped>
 .upload-rows {
-  margin-top: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
 }
 .upload-row {
   display: flex;
@@ -157,21 +159,33 @@ function rowStatusText(row: UploadRow): string {
   gap: 12px;
 }
 .upload-row-name {
-  flex: 0 0 200px;
+  flex: 0 0 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
+  color: var(--ink-2);
 }
 .upload-row-progress {
   flex: 1 1 auto;
 }
 .upload-row-status {
   flex: 0 0 auto;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-3);
 }
 .upload-row-status.is-failed {
-  color: var(--el-color-danger);
+  color: var(--vermilion);
+}
+
+@media (max-width: 720px) {
+  .upload-row {
+    flex-wrap: wrap;
+  }
+
+  .upload-row-name {
+    flex-basis: 100%;
+  }
 }
 </style>

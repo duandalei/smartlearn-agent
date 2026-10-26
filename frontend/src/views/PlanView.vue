@@ -39,6 +39,7 @@ import {
   weekKindOf,
 } from '@/utils/plan'
 import { todayLocalStr } from '@/utils/record'
+import PageHeader from '@/components/common/PageHeader.vue'
 import AdjustHistoryPanel from '@/components/plan/AdjustHistoryPanel.vue'
 import PlanDiffPreview from '@/components/plan/PlanDiffPreview.vue'
 import PlanEmptyState from '@/components/plan/PlanEmptyState.vue'
@@ -378,16 +379,29 @@ function handleBackFromHistory(): void {
 </script>
 
 <template>
-  <div class="plan-view">
-    <!-- 1. 首屏加载骨架 -->
-    <el-skeleton v-if="phase === 'loading'" :rows="8" animated />
+  <div class="page plan-view">
+    <PageHeader
+      folio="卷五 · 排布"
+      title="学习计划"
+      lead="把目标与任务排进这一周的具体时段；计划可以调整，但要留下调整的理由。"
+    />
 
-    <!-- 2. 取数失败错误卡（优先于周视图，不残留旧网格冒充新版本，D15） -->
-    <el-card v-else-if="fetchError" class="fetch-error-card" shadow="never">
-      <div class="error-icon">!</div>
-      <div class="error-text">计划调整已生效，但新版本条目暂时加载失败</div>
-      <el-button type="primary" @click="loadInitial">重新加载</el-button>
-    </el-card>
+    <!-- 1. 首屏加载骨架 -->
+    <el-skeleton v-if="phase === 'loading'" :rows="10" animated />
+
+    <!-- 2. 取数失败（D15：不拿旧网格冒充新版本） -->
+    <div v-else-if="fetchError" class="panel">
+      <div class="panel__body">
+        <div class="empty-note">
+          <span class="seal seal--ghost" aria-hidden="true">!</span>
+          <div class="empty-note__title">新版本条目暂时加载失败</div>
+          <div>计划调整已经生效，只是这一版的内容还没取回来。</div>
+          <div class="empty-note__actions">
+            <el-button type="primary" @click="loadInitial">重新加载</el-button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- 3. diff 预览 -->
     <PlanDiffPreview
@@ -435,7 +449,13 @@ function handleBackFromHistory(): void {
         @switch-week="switchWeek"
         @generate="runGenerate"
       />
-      <div class="toolbar">
+
+      <div class="plan-toolbar">
+        <span class="plan-toolbar__hint">同一周期重新生成会先归档当前版本</span>
+        <span class="spacer" />
+        <el-button plain :loading="adjustBusy" :disabled="generating" @click="handleAdjust">
+          重新调整计划
+        </el-button>
         <el-button
           type="primary"
           :loading="generating"
@@ -444,11 +464,8 @@ function handleBackFromHistory(): void {
         >
           {{ hasNextWeekPlan ? '重新生成下周计划' : '生成下一周学习计划' }}
         </el-button>
-        <el-button plain :loading="adjustBusy" :disabled="generating" @click="handleAdjust">
-          重新调整计划
-        </el-button>
-        <span class="toolbar-hint">同一周期重新生成会先归档当前版本</span>
       </div>
+
       <WeekGrid :plan="sessionPlan.plan" :items="sessionPlan.items" />
       <UnplacedTasksCard v-if="unplacedTasks.length > 0" :tasks="unplacedTasks" />
     </template>
@@ -456,38 +473,23 @@ function handleBackFromHistory(): void {
 </template>
 
 <style scoped>
-.plan-view {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.toolbar {
+.plan-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
-.toolbar-hint {
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
+
+.plan-toolbar__hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-4);
 }
-.fetch-error-card {
-  text-align: center;
-  padding: 32px 0;
-}
-.error-icon {
-  width: 40px;
-  height: 40px;
-  margin: 0 auto 12px;
-  border-radius: 50%;
-  background: var(--el-color-danger-light-9);
-  color: var(--el-color-danger);
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 40px;
-}
-.error-text {
-  font-size: 15px;
-  color: var(--el-text-color-primary);
-  margin-bottom: 16px;
+
+@media (max-width: 720px) {
+  .plan-toolbar__hint {
+    order: 3;
+    flex-basis: 100%;
+  }
 }
 </style>

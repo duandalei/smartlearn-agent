@@ -21,6 +21,7 @@ import {
   fetchTasks,
   transitionTaskStatus,
 } from '@/api/task'
+import PageHeader from '@/components/common/PageHeader.vue'
 import TaskBoard from '@/components/task/TaskBoard.vue'
 import TaskFormDialog from '@/components/task/TaskFormDialog.vue'
 import TaskStatsCards from '@/components/task/TaskStatsCards.vue'
@@ -38,7 +39,6 @@ import {
   formatDeadline,
   isTaskOverdue,
   nextStatusOptions,
-  priorityTagType,
 } from '@/utils/task'
 
 const router = useRouter()
@@ -305,6 +305,16 @@ function courseName(courseId: number | null): string {
   return courseNameMap.value.get(courseId) ?? '—'
 }
 
+const PRIORITY_LABEL: Record<TaskPriority, string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
+}
+
+function priorityLabel(priority: TaskPriority): string {
+  return PRIORITY_LABEL[priority]
+}
+
 const statusOptions: { value: TaskStatus | ''; label: string }[] = [
   { value: '', label: '全部状态' },
   ...(['todo', 'in_progress', 'done', 'review'] as TaskStatus[]).map((s) => ({
@@ -328,158 +338,172 @@ const overdueOptions: { value: '' | 'true' | 'false'; label: string }[] = [
 </script>
 
 <template>
-  <el-space direction="vertical" alignment="stretch" :size="16" style="width: 100%">
-    <el-card shadow="never">
-      <TaskStatsCards :stats="stats" />
-    </el-card>
-
-    <el-card shadow="never">
-      <div class="toolbar">
-        <div class="filters">
-          <el-select v-model="filterStatus" class="filter-item" placeholder="全部状态">
-            <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
-          </el-select>
-          <el-select v-model="filterPriority" class="filter-item" placeholder="全部优先级">
-            <el-option v-for="o in priorityOptions" :key="o.value" :label="o.label" :value="o.value" />
-          </el-select>
-          <el-select v-model="filterCourseId" class="filter-item" placeholder="全部课程" clearable>
-            <el-option v-for="c in courses" :key="c.id" :label="c.name" :value="c.id" />
-          </el-select>
-          <el-input
-            v-model="filterKnowledgePoint"
-            class="filter-item"
-            placeholder="知识点"
-            clearable
-          />
-          <el-select v-model="filterOverdue" class="filter-item" placeholder="逾期筛选">
-            <el-option v-for="o in overdueOptions" :key="o.value" :label="o.label" :value="o.value" />
-          </el-select>
-          <el-input
-            v-model="filterKeyword"
-            class="filter-item keyword"
-            placeholder="关键词（回车搜索）"
-            clearable
-            @keyup.enter="onKeywordSearch"
-            @clear="onKeywordSearch"
-          />
-          <el-button @click="onResetFilters">重置</el-button>
-        </div>
-        <div class="toolbar-right">
-          <el-radio-group v-model="viewMode">
-            <el-radio-button value="board">看板</el-radio-button>
-            <el-radio-button value="list">列表</el-radio-button>
-          </el-radio-group>
-          <el-button type="primary" @click="onCreate">新建任务</el-button>
-        </div>
-      </div>
-    </el-card>
-
-    <el-card v-if="viewMode === 'list'" shadow="never" v-loading="listLoading">
-      <el-empty
-        v-if="!listLoading && tasks.length === 0"
-        description="还没有学习任务"
-      >
+  <div class="page tasks-view">
+    <PageHeader
+      folio="卷三 · 推进"
+      title="学习任务"
+      lead="把计划落成一张可以拖动的任务单：先做重要的，逾期的先处理。"
+    >
+      <template #actions>
+        <el-radio-group v-model="viewMode" aria-label="切换任务视图">
+          <el-radio-button value="board">看板</el-radio-button>
+          <el-radio-button value="list">列表</el-radio-button>
+        </el-radio-group>
         <el-button type="primary" @click="onCreate">新建任务</el-button>
-      </el-empty>
-      <template v-else>
-        <el-table :data="tasks" :row-class-name="rowClassName">
-          <el-table-column prop="title" label="名称" min-width="180" show-overflow-tooltip />
-          <el-table-column label="知识点" min-width="160">
-            <template #default="{ row }">
-              <template v-if="normalizeKnowledgePoints(row.knowledge_points).length > 0">
-                <el-tag
-                  v-for="k in normalizeKnowledgePoints(row.knowledge_points).slice(0, 3)"
-                  :key="k"
-                  size="small"
-                  type="info"
-                  effect="plain"
-                  style="margin-right: 4px"
-                >
-                  {{ k }}
-                </el-tag>
-                <el-tag v-if="normalizeKnowledgePoints(row.knowledge_points).length > 3" size="small" type="info" effect="plain">
-                  +{{ normalizeKnowledgePoints(row.knowledge_points).length - 3 }}
-                </el-tag>
-              </template>
-              <span v-else>—</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="优先级" width="90">
-            <template #default="{ row }">
-              <el-tag :type="priorityTagType(row.priority)" size="small">
-                {{ row.priority === 'high' ? '高' : row.priority === 'medium' ? '中' : '低' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="所属课程" min-width="110">
-            <template #default="{ row }">
-              {{ courseName(row.course_id) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="截止时间" min-width="150">
-            <template #default="{ row }">
-              <span :class="{ 'overdue-text': isTaskOverdue(row) }">
-                {{ formatDeadline(row.deadline) }}
-                <template v-if="isTaskOverdue(row)">（已逾期）</template>
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column label="预计耗时" width="95">
-            <template #default="{ row }">
-              {{ row.estimated_minutes != null ? `${row.estimated_minutes} 分钟` : '—' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="实际耗时" width="95">
-            <template #default="{ row }">
-              {{ row.actual_minutes != null ? `${row.actual_minutes} 分钟` : '—' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="150">
-            <template #default="{ row }">
-              <el-select
-                :model-value="row.status"
-                size="small"
-                @change="(v: TaskStatus) => onStatusChange(row, v)"
-              >
-                <el-option
-                  v-for="opt in nextStatusOptions(row.status)"
-                  :key="opt.value"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
-              </el-select>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="120" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="onEdit(row)">编辑</el-button>
-              <el-button link type="danger" size="small" @click="onDelete(row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div v-if="total > 0" class="pager-row">
-          <el-pagination
-            :current-page="page"
-            :page-size="pageSize"
-            :total="total"
-            :page-sizes="[10, 20, 50, 100]"
-            layout="total, sizes, prev, pager, next"
-            @current-change="onPageChange"
-            @size-change="onSizeChange"
-          />
-        </div>
       </template>
-    </el-card>
+    </PageHeader>
 
-    <el-card v-else shadow="never">
-      <TaskBoard
-        ref="boardRef"
-        @changed="onBoardChanged"
-        @task-done="handleTaskDone"
-        @edit="onBoardEdit"
+    <TaskStatsCards :stats="stats" />
+
+    <div class="filter-bar">
+      <el-select v-model="filterStatus" class="filter-item" placeholder="全部状态">
+        <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
+      </el-select>
+      <el-select v-model="filterPriority" class="filter-item" placeholder="全部优先级">
+        <el-option v-for="o in priorityOptions" :key="o.value" :label="o.label" :value="o.value" />
+      </el-select>
+      <el-select v-model="filterCourseId" class="filter-item" placeholder="全部课程" clearable>
+        <el-option v-for="c in courses" :key="c.id" :label="c.name" :value="c.id" />
+      </el-select>
+      <el-input
+        v-model="filterKnowledgePoint"
+        class="filter-item"
+        placeholder="知识点"
+        clearable
       />
-    </el-card>
-  </el-space>
+      <el-select v-model="filterOverdue" class="filter-item" placeholder="逾期筛选">
+        <el-option v-for="o in overdueOptions" :key="o.value" :label="o.label" :value="o.value" />
+      </el-select>
+      <el-input
+        v-model="filterKeyword"
+        class="filter-item filter-item--wide"
+        placeholder="关键词（回车搜索）"
+        clearable
+        @keyup.enter="onKeywordSearch"
+        @clear="onKeywordSearch"
+      />
+      <el-button @click="onResetFilters">重置</el-button>
+    </div>
+
+    <section v-if="viewMode === 'list'" class="panel list-panel">
+      <div v-loading="listLoading" class="panel__body list-body">
+        <div v-if="!listLoading && tasks.length === 0" class="empty-note">
+          <span class="seal seal--ghost" aria-hidden="true">务</span>
+          <div class="empty-note__title">还没有学习任务</div>
+          <div>把目标拆出来的下一步写成任务，再安排到具体时段。</div>
+          <div class="empty-note__actions">
+            <el-button type="primary" @click="onCreate">新建任务</el-button>
+          </div>
+        </div>
+
+        <template v-else>
+          <el-table :data="tasks" :row-class-name="rowClassName">
+            <el-table-column prop="title" label="名称" min-width="180" show-overflow-tooltip />
+            <el-table-column label="知识点" min-width="160">
+              <template #default="{ row }">
+                <template v-if="normalizeKnowledgePoints(row.knowledge_points).length > 0">
+                  <el-tag
+                    v-for="k in normalizeKnowledgePoints(row.knowledge_points).slice(0, 3)"
+                    :key="k"
+                    size="small"
+                    effect="plain"
+                    class="kp-tag"
+                  >
+                    {{ k }}
+                  </el-tag>
+                  <el-tag
+                    v-if="normalizeKnowledgePoints(row.knowledge_points).length > 3"
+                    size="small"
+                    effect="plain"
+                  >
+                    +{{ normalizeKnowledgePoints(row.knowledge_points).length - 3 }}
+                  </el-tag>
+                </template>
+                <span v-else class="muted">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="优先级" width="88">
+              <template #default="{ row }">
+                <span class="table-priority" :class="`is-${row.priority}`">
+                  <span class="table-priority__dot" aria-hidden="true" />
+                  {{ priorityLabel(row.priority) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="所属课程" min-width="110">
+              <template #default="{ row }">
+                {{ courseName(row.course_id) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="截止时间" min-width="160">
+              <template #default="{ row }">
+                <span :class="{ 'overdue-text': isTaskOverdue(row) }">
+                  {{ formatDeadline(row.deadline) }}
+                  <template v-if="isTaskOverdue(row)"> · 已逾期</template>
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="预计" width="82">
+              <template #default="{ row }">
+                <span class="mono-cell">
+                  {{ row.estimated_minutes != null ? `${row.estimated_minutes} 分` : '—' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="实际" width="82">
+              <template #default="{ row }">
+                <span class="mono-cell">
+                  {{ row.actual_minutes != null ? `${row.actual_minutes} 分` : '—' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="148">
+              <template #default="{ row }">
+                <el-select
+                  :model-value="row.status"
+                  size="small"
+                  @change="(v: TaskStatus) => onStatusChange(row, v)"
+                >
+                  <el-option
+                    v-for="opt in nextStatusOptions(row.status)"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value"
+                  />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="110" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="onEdit(row)">编辑</el-button>
+                <el-button link type="danger" size="small" @click="onDelete(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div v-if="total > 0" class="pager-row">
+            <el-pagination
+              :current-page="page"
+              :page-size="pageSize"
+              :total="total"
+              :page-sizes="[10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
+              @current-change="onPageChange"
+              @size-change="onSizeChange"
+            />
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <TaskBoard
+      v-else
+      ref="boardRef"
+      @changed="onBoardChanged"
+      @task-done="handleTaskDone"
+      @edit="onBoardEdit"
+    />
+  </div>
 
   <TaskFormDialog
     v-model:visible="formVisible"
@@ -491,40 +515,69 @@ const overdueOptions: { value: '' | 'true' | 'false'; label: string }[] = [
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+.list-panel {
+  overflow: hidden;
 }
-.filters {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  flex: 1 1 auto;
+
+.list-body {
+  padding: 0;
+  min-height: 240px;
 }
-.filter-item {
-  width: 130px;
+
+.list-body > .empty-note {
+  padding: 44px 24px;
 }
-.filter-item.keyword {
-  width: 180px;
-}
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+
 .pager-row {
   display: flex;
   justify-content: flex-end;
-  margin-top: 12px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
 }
+
+.kp-tag {
+  margin-right: 4px;
+}
+
+.mono-cell {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.table-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.table-priority__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--dust);
+}
+
+.table-priority.is-high .table-priority__dot {
+  background: var(--vermilion);
+}
+
+.table-priority.is-medium .table-priority__dot {
+  background: var(--ochre);
+}
+
+.table-priority.is-low .table-priority__dot {
+  background: var(--dust);
+}
+
 .overdue-text {
-  color: var(--el-color-danger);
+  color: var(--vermilion);
 }
+
 :deep(.overdue-row) {
-  --el-table-tr-bg-color: var(--el-color-danger-light-9);
+  --el-table-tr-bg-color: var(--danger-wash);
 }
 </style>

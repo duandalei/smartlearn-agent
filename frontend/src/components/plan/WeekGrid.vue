@@ -77,19 +77,21 @@ function highlightBadge(item: PlanItem): string {
             :class="[
               `is-${item.status}`,
               highlightOf(item) ? `is-highlight-${highlightOf(item)}` : '',
+              { 'has-badge': highlightOf(item) },
             ]"
           >
             <span v-if="highlightOf(item)" class="hl-badge">{{ highlightBadge(item) }}</span>
-            <div class="item-topic">{{ item.topic }}</div>
+            <div class="item-topic-row">
+              <span class="item-status" :class="`is-${item.status}`" aria-hidden="true" />
+              <span class="item-topic">{{ item.topic }}</span>
+            </div>
             <div class="item-time">{{ formatHm(item.start_time) }} ~ {{ formatHm(item.end_time) }}</div>
             <template v-if="!props.compact">
               <div v-if="item.estimated_minutes != null" class="item-minutes">
                 约 {{ item.estimated_minutes }} 分钟
               </div>
-              <el-tag v-if="item.task_id != null" size="small" effect="plain" class="task-tag">
-                关联任务
-              </el-tag>
-              <span v-if="item.status === 'done'" class="done-mark">✓</span>
+              <span v-if="item.task_id != null" class="task-chip">任务</span>
+              <span v-if="item.status === 'done'" class="done-mark" aria-label="已完成">✓</span>
             </template>
           </div>
         </div>
@@ -107,156 +109,257 @@ function highlightBadge(item: PlanItem): string {
 <style scoped>
 .week-grid-scroll {
   overflow-x: auto;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
+
 .week-grid {
   display: grid;
-  grid-template-columns: 72px repeat(7, minmax(120px, 1fr));
-  gap: 4px;
-  min-width: 912px;
+  grid-template-columns: 64px repeat(7, minmax(118px, 1fr));
+  gap: 1px;
+  min-width: 920px;
+  background: var(--line);
 }
+
 .cell {
   min-height: 40px;
+  background: var(--paper-2);
 }
+
 .corner {
-  background: transparent;
+  background: var(--paper-3);
 }
+
 .col-head {
+  padding: 10px 4px;
   text-align: center;
+  font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
-  padding: 6px 4px;
-  background: var(--el-fill-color-light);
-  border-radius: 4px;
+  color: var(--ink);
+  background: var(--paper-3);
 }
+
 .row-head {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 10px;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  background: var(--el-fill-color-light);
-  border-radius: 4px;
+  padding-top: 12px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--ink-3);
+  background: var(--paper-3);
 }
+
 .slot-cell {
-  background: var(--el-fill-color-lighter);
-  border-radius: 4px;
-  padding: 4px;
+  min-height: 82px;
+  padding: 6px;
+  background: var(--paper-2);
 }
+
 .item-card {
   position: relative;
-  background: var(--el-bg-color);
-  border-radius: 4px;
-  padding: 6px 8px;
-  margin-bottom: 4px;
+  padding: 7px 8px;
+  margin-bottom: 5px;
   font-size: 12px;
-  border: 1px solid transparent;
+  background: var(--paper-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  transition: border-color 0.16s var(--ease), background-color 0.16s var(--ease);
 }
-/* 状态标注：仅依据条目自身 status 字段（spec §5.1.1 规则 6） */
-.item-card.is-planned {
-  border-left: 3px solid var(--el-color-warning);
+
+.item-card:last-child {
+  margin-bottom: 0;
 }
-.item-card.is-done {
-  opacity: 0.65;
+
+.item-card:hover {
+  border-color: var(--line-strong);
 }
-.item-card.is-done .item-topic {
-  color: var(--el-text-color-secondary);
+
+.item-topic-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
 }
-.item-card.is-skipped {
-  opacity: 0.65;
+
+.item-card.has-badge .item-topic-row {
+  padding-right: 34px;
 }
-.item-card.is-skipped .item-topic {
-  text-decoration: line-through;
-  color: var(--el-text-color-secondary);
+
+/* 状态标注：小方块 + 文字状态，不只靠颜色 */
+.item-status {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  margin-top: 5px;
+  border-radius: 1px;
+  background: var(--dust);
 }
+
+.item-status.is-planned {
+  background: var(--vermilion);
+}
+
+.item-status.is-done {
+  background: var(--jade);
+}
+
+.item-status.is-skipped {
+  background: var(--ink-4);
+}
+
 .item-topic {
-  color: var(--el-text-color-primary);
-  line-height: 1.4;
+  min-width: 0;
+  line-height: 1.45;
+  color: var(--ink);
+  font-weight: 500;
+  word-break: break-word;
 }
+
+.item-card.is-done {
+  opacity: 0.72;
+}
+
+.item-card.is-done .item-topic {
+  color: var(--ink-3);
+}
+
+.item-card.is-skipped {
+  opacity: 0.62;
+}
+
+.item-card.is-skipped .item-topic {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
 .item-time {
-  margin-top: 2px;
-  color: var(--el-text-color-secondary);
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-4);
 }
+
 .item-minutes {
   margin-top: 2px;
-  color: var(--el-text-color-placeholder);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-4);
 }
-.task-tag {
+
+.task-chip {
+  display: inline-block;
   margin-top: 4px;
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  line-height: 14px;
+  color: var(--ink-3);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
+
 .done-mark {
   position: absolute;
-  top: 4px;
-  right: 6px;
-  color: var(--el-color-success);
-  font-weight: 600;
+  top: 5px;
+  right: 7px;
+  color: var(--jade);
+  font-weight: 700;
+  line-height: 1;
 }
+
 /* diff 高亮（compact 双栏） */
 .item-card.is-highlight-moved {
-  border-color: var(--el-color-warning);
+  border-color: var(--ochre);
+  background: var(--ochre-wash);
 }
+
 .item-card.is-highlight-added {
-  border-color: var(--el-color-success);
+  border-color: var(--jade);
+  background: var(--jade-wash);
 }
+
 .item-card.is-highlight-removed {
-  border-color: var(--el-color-danger);
+  border-color: var(--vermilion);
+  background: var(--danger-wash);
 }
+
 .hl-badge {
   position: absolute;
-  top: -8px;
-  right: 4px;
-  font-size: 10px;
-  line-height: 1.4;
+  top: 3px;
+  right: 3px;
   padding: 0 4px;
-  border-radius: 3px;
-  color: var(--el-bg-color);
-  background: var(--el-color-warning);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  line-height: 14px;
+  color: var(--paper-2);
+  background: var(--ochre);
+  border-radius: 1px;
 }
+
 .is-highlight-added .hl-badge {
-  background: var(--el-color-success);
+  background: var(--jade);
 }
+
 .is-highlight-removed .hl-badge {
-  background: var(--el-color-danger);
+  background: var(--vermilion);
 }
+
 /* compact 缩略形态：缩小内边距与字号（diff 双栏复用） */
 .compact .item-card {
   padding: 4px 6px;
   font-size: 11px;
 }
-/* compact 列宽收窄：双栏各占一半时仍能并排容纳 7 天（1440px 视口），
-   极窄屏由 min-width + .week-grid-scroll 内部横向滚动兜底。 */
+
 .compact .week-grid {
-  grid-template-columns: 56px repeat(7, minmax(0, 1fr));
+  grid-template-columns: 52px repeat(7, minmax(0, 1fr));
   min-width: 560px;
 }
-/* compact 关闭状态视觉（design 2.4.2-5 仅 topic + 时间），diff 高亮边框保留 */
-.compact .item-card.is-planned:not(.is-highlight-moved):not(.is-highlight-added):not(.is-highlight-removed) {
-  border-left-color: transparent;
+
+.compact .slot-cell {
+  min-height: 54px;
+  padding: 4px;
 }
+
 .compact .item-card.is-done,
 .compact .item-card.is-skipped {
   opacity: 1;
 }
+
 .compact .item-card.is-done .item-topic,
 .compact .item-card.is-skipped .item-topic {
-  color: var(--el-text-color-primary);
+  color: var(--ink);
   text-decoration: none;
 }
+
 .compact .col-head,
 .compact .row-head {
-  font-size: 12px;
+  font-size: 11px;
 }
+
+.compact .col-head {
+  padding: 7px 3px;
+}
+
+.compact .row-head {
+  padding-top: 9px;
+}
+
 .rest-cell {
-  padding: 4px;
+  padding: 6px;
 }
+
 .rest-card {
-  background: var(--el-fill-color);
-  border-radius: 4px;
-  padding: 4px 8px;
+  padding: 4px 6px;
   margin-bottom: 4px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ink-3);
   text-align: center;
+  background: var(--paper-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
 }
 </style>

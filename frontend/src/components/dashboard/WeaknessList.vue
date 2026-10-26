@@ -14,57 +14,101 @@ defineProps<{
 
   <div v-else-if="error" class="block-error" @click="reload">数据加载失败，点击重试</div>
 
-  <el-empty v-else-if="data == null || data.items.length === 0" description="暂无薄弱知识点" />
-
-  <div v-else class="weakness-list">
-    <div v-for="item in data.items" :key="item.knowledge_point" class="weakness-item">
-      <div class="weakness-main">
-        <span class="weakness-name">{{ item.knowledge_point }}</span>
-        <span class="weakness-score">{{ item.mastery_score }} 分</span>
-        <el-tag size="small" type="info">近 30 天 {{ item.recent_count }} 次</el-tag>
-      </div>
-      <div class="weakness-advice">{{ item.advice }}</div>
-    </div>
+  <div v-else-if="data == null || data.items.length === 0" class="empty-note weakness-empty">
+    <div class="empty-note__title">暂时没有薄弱知识点</div>
+    <div>继续保持记录，或去知识库补充一些可检索的资料。</div>
   </div>
+
+  <ol v-else class="weakness-list">
+    <li
+      v-for="(item, index) in data.items"
+      :key="item.knowledge_point"
+      class="weakness-item"
+    >
+      <div class="weakness-rank" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</div>
+      <div class="weakness-main">
+        <div class="weakness-line">
+          <span class="weakness-name">{{ item.knowledge_point }}</span>
+          <span class="weakness-score">{{ item.mastery_score }} 分</span>
+          <span class="weakness-count">近 30 天 {{ item.recent_count }} 次</span>
+        </div>
+        <p class="weakness-advice">{{ item.advice }}</p>
+      </div>
+    </li>
+  </ol>
 </template>
 
 <style scoped>
-.weakness-item {
-  padding: 8px 0;
-  border-bottom: 1px dashed var(--el-border-color-lighter);
+.weakness-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
+
+.weakness-item {
+  display: flex;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.weakness-item:first-child {
+  padding-top: 0;
+}
+
 .weakness-item:last-child {
+  padding-bottom: 0;
   border-bottom: none;
 }
-.weakness-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+
+.weakness-rank {
+  flex: 0 0 24px;
+  font-family: var(--font-display);
+  font-variant-numeric: lining-nums tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--vermilion);
 }
+
+.weakness-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.weakness-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .weakness-name {
   font-size: 14px;
-  font-weight: 500;
-  color: var(--el-text-color-primary);
+  font-weight: 600;
+  color: var(--ink);
 }
+
 .weakness-score {
-  font-size: 13px;
-  color: var(--el-color-danger);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--vermilion);
 }
+
+.weakness-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-4);
+}
+
 .weakness-advice {
-  margin-top: 4px;
+  margin-top: 3px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  line-height: 1.65;
+  color: var(--ink-3);
 }
-.block-error {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 96px;
-  color: var(--el-color-danger);
-  font-size: 14px;
-  cursor: pointer;
-}
-.block-error:hover {
-  text-decoration: underline;
+
+.weakness-empty {
+  padding: 24px 8px;
 }
 </style>

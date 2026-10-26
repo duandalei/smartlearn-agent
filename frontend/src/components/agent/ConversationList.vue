@@ -13,7 +13,6 @@
  */
 import { ref } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
 
 import type { AgentConversation } from '@/types/agent'
 
@@ -84,19 +83,19 @@ function confirmRemove(conversation: AgentConversation): void {
   <div class="conversation-list">
     <div class="list-head">
       <span class="list-title">会话</span>
-      <el-button size="small" :icon="Plus" :disabled="props.generating" @click="emit('create')">
-        新建会话
+      <el-button size="small" plain :disabled="props.generating" @click="emit('create')">
+        新建
       </el-button>
     </div>
 
-    <div v-if="props.loading" class="list-loading" v-loading="true" element-loading-text="加载中" />
+    <div v-if="props.loading" class="list-loading">
+      <el-skeleton :rows="4" animated />
+    </div>
 
-    <el-empty
-      v-else-if="!props.conversations.length"
-      description="暂无会话，点击上方新建开始"
-      :image-size="70"
-      class="list-empty"
-    />
+    <div v-else-if="!props.conversations.length" class="empty-note list-empty">
+      <div class="empty-note__title">还没有会话</div>
+      <div>点右上角「新建」开始第一次提问。</div>
+    </div>
 
     <div v-else class="list-body">
       <div
@@ -106,6 +105,7 @@ function confirmRemove(conversation: AgentConversation): void {
         :class="{ active: conversation.id === props.currentId, disabled: props.generating }"
         @click="emit('select', conversation.id)"
       >
+        <span class="item-dot" aria-hidden="true" />
         <span class="item-title">{{ displayTitle(conversation.title) }}</span>
         <span class="item-actions" @click.stop>
           <el-button link size="small" @click="openRename(conversation)">重命名</el-button>
@@ -143,48 +143,62 @@ function confirmRemove(conversation: AgentConversation): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  gap: 8px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--line);
 }
 .list-title {
-  font-size: 14px;
+  font-family: var(--font-display);
+  font-size: 16px;
   font-weight: 600;
+  color: var(--ink);
 }
 .list-loading {
   flex: 1;
+  padding: 14px;
 }
 .list-empty {
-  margin-top: 40px;
+  margin: 8px 12px;
+  padding: 28px 8px;
 }
 .list-body {
-  flex: 1;
+  flex: 1 1 auto;
   overflow-y: auto;
   padding: 8px;
 }
 .conversation-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 8px 10px;
-  border-radius: 6px;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: var(--radius);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  transition: background-color 0.16s var(--ease), color 0.16s var(--ease);
 }
 .conversation-item:hover {
-  background: var(--el-fill-color-light);
+  background: var(--paper-3);
 }
-/* 当前会话高亮（选中态背景 + 主色左边条） */
+.item-dot {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 4px;
+  border-radius: 1px;
+  background: var(--line-strong);
+}
 .conversation-item.active {
-  background: var(--el-color-primary-light-9);
-  box-shadow: inset 3px 0 0 var(--el-color-primary);
+  background: var(--vermilion-wash);
+  color: var(--ink);
 }
-/* 生成中视觉置灰（轻提示由 AgentView 统一弹出——单一来源） */
+.conversation-item.active .item-dot {
+  background: var(--vermilion);
+}
 .conversation-item.disabled {
   opacity: 0.55;
 }
 .item-title {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -193,8 +207,10 @@ function confirmRemove(conversation: AgentConversation): void {
 .item-actions {
   flex: 0 0 auto;
   display: none;
+  gap: 2px;
 }
-.conversation-item:hover .item-actions {
+.conversation-item:hover .item-actions,
+.conversation-item:focus-within .item-actions {
   display: inline-flex;
 }
 </style>

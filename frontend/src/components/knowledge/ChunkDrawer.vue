@@ -79,7 +79,7 @@ function close(): void {
 <template>
   <el-drawer
     :model-value="props.modelValue"
-    size="480px"
+    size="min(480px, 92vw)"
     @update:model-value="close"
   >
     <template #header>
@@ -123,18 +123,21 @@ function close(): void {
 .chunk-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 .chunk-card {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-  padding: 12px;
-  background: var(--el-fill-color-blank);
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
-/* 跳转定位的高亮分块（P9 来源卡承接） */
+.chunk-card:last-child {
+  border-bottom: none;
+}
+/* 跳转定位的高亮分块：整块浅朱砂底 + 完整细边框 */
 .chunk-card.highlighted {
-  border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
+  margin: 6px 0;
+  padding: 14px 12px;
+  background: var(--vermilion-wash);
+  border: 1px solid #e4b6ac;
+  border-radius: var(--radius);
 }
 .chunk-head {
   display: flex;
@@ -143,8 +146,11 @@ function close(): void {
   margin-bottom: 8px;
 }
 .chunk-path {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .drawer-head {
   display: flex;
@@ -154,22 +160,29 @@ function close(): void {
   width: 100%;
 }
 .drawer-title {
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: 19px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .chunk-content {
   margin: 0;
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.75;
+  color: var(--ink-2);
   word-break: break-word;
 }
 .chunk-content.raw {
-  padding: 8px;
-  border-radius: 4px;
-  background: var(--el-fill-color-light);
-  font-family: Consolas, Monaco, 'Courier New', monospace;
-  font-size: 12px;
+  padding: 10px 12px;
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
   white-space: pre-wrap;
 }
 </style>

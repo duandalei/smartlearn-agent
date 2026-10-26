@@ -675,27 +675,33 @@ onMounted(() => {
     <!-- 右栏：对话区（页面不滚动，唯一滚动容器在 chat-scroll） -->
     <section class="chat-panel">
       <header class="chat-head">
-        <span class="head-title">{{ currentConversation?.title || '新会话' }}</span>
+        <div class="chat-head__main">
+          <span class="chat-head__mark" aria-hidden="true" />
+          <span class="head-title">{{ currentConversation?.title || '新会话' }}</span>
+        </div>
+        <span class="chat-head__meta">AI 助手</span>
       </header>
 
       <div ref="scroller" class="chat-scroll" @scroll="onScroll">
-        <!-- 空态：el-empty + 快捷问题（O2/O3——非空会话不显示） -->
+        <!-- 空态：书页式引导 + 快捷问题（O2/O3——非空会话不显示） -->
         <div v-if="!messages.length && !messagesLoading" class="empty-state">
-          <el-empty
-            description="向 AI 助手提问，它会自动调用工具分析你的学习数据"
-            :image-size="90"
-          />
+          <span class="seal seal--ghost" aria-hidden="true">问</span>
+          <h2 class="empty-state__title">今天想先弄明白什么？</h2>
           <p class="kb-hint">{{ KNOWLEDGE_HINT }}</p>
           <div class="quick-questions">
-            <el-button
-              v-for="question in QUICK_QUESTIONS"
+            <button
+              v-for="(question, index) in QUICK_QUESTIONS"
               :key="question"
-              plain
+              type="button"
+              class="quick-question"
               :disabled="streaming"
               @click="onQuickQuestion(question)"
             >
-              {{ question }}
-            </el-button>
+              <span class="quick-question__index" aria-hidden="true">
+                {{ String(index + 1).padStart(2, '0') }}
+              </span>
+              <span class="quick-question__text">{{ question }}</span>
+            </button>
           </div>
         </div>
 
@@ -704,6 +710,7 @@ onMounted(() => {
             v-for="(message, idx) in messages"
             :key="idx"
             :message="message"
+            :is-continuation="idx > 0 && messages[idx - 1]?.kind === 'assistant'"
             @card-toggle="onCardToggle"
             @source-navigate="onSourceNavigate"
           />
@@ -712,92 +719,241 @@ onMounted(() => {
 
       <!-- 输入区（停止按钮原位常驻——O5） -->
       <div class="composer-area">
-        <AgentComposer :streaming="streaming" @send="onSend" @stop="onStop" />
+        <div class="composer-inner">
+          <AgentComposer :streaming="streaming" @send="onSend" @stop="onStop" />
+        </div>
       </div>
     </section>
   </div>
 </template>
 
 <style scoped>
-/* 双栏布局（design 2.4.4-D）：页面不滚动，滚动仅发生在 chat-scroll。 */
 .agent-page {
   height: 100%;
   display: flex;
-  gap: 12px;
+  gap: 16px;
+  padding: 22px 32px 26px;
   overflow: hidden;
 }
+
 .conversation-panel {
-  flex: 0 0 264px;
+  flex: 0 0 260px;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  background: #ffffff;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   overflow: hidden;
 }
+
 .panel-foot {
   flex: 0 0 auto;
-  padding: 8px 12px;
-  border-top: 1px solid var(--el-border-color-lighter);
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
+  padding: 9px 14px;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-4);
 }
+
 .chat-panel {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  background: #ffffff;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   overflow: hidden;
 }
+
 .chat-head {
   flex: 0 0 auto;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--line);
 }
+
+.chat-head__main {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.chat-head__mark {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  background: var(--vermilion);
+  border-radius: 1px;
+}
+
 .head-title {
-  font-size: 15px;
-  font-weight: 600;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
 }
+
+.chat-head__meta {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-4);
+}
+
 .chat-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px;
+  padding: 22px 24px;
+  background: var(--paper);
 }
+
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding-top: 40px;
+  gap: 14px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 48px 0 24px;
+  text-align: center;
 }
+
+.empty-state__title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .kb-hint {
-  margin: 0;
+  max-width: 46ch;
   font-size: 12px;
-  color: var(--el-text-color-placeholder);
+  line-height: 1.7;
+  color: var(--ink-3);
 }
+
 .quick-questions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: 320px;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
 }
+
+.quick-question {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 11px 14px;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.16s var(--ease), background-color 0.16s var(--ease);
+}
+
+.quick-question:hover:not(:disabled) {
+  border-color: var(--vermilion);
+  background: var(--vermilion-wash);
+}
+
+.quick-question:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quick-question__index {
+  flex: 0 0 auto;
+  font-family: var(--font-display);
+  font-variant-numeric: lining-nums tabular-nums;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vermilion);
+}
+
+.quick-question__text {
+  min-width: 0;
+}
+
 .message-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
+  max-width: 860px;
+  margin: 0 auto;
 }
+
 .composer-area {
   flex: 0 0 auto;
-  border-top: 1px solid var(--el-border-color-lighter);
-  padding: 12px 16px;
-  background: #ffffff;
+  padding: 14px 20px 16px;
+  background: var(--paper-2);
+  border-top: 1px solid var(--line);
+}
+
+.composer-inner {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+@media (max-width: 960px) {
+  .agent-page {
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .conversation-panel {
+    flex: 0 0 auto;
+    max-height: 190px;
+  }
+
+  .chat-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .agent-page {
+    padding: 12px;
+  }
+
+  .chat-head {
+    padding: 12px 14px;
+  }
+
+  .chat-scroll {
+    padding: 16px 14px;
+  }
+
+  .empty-state {
+    padding-top: 32px;
+  }
+
+  .empty-state__title {
+    font-size: 20px;
+  }
+
+  .composer-area {
+    padding: 12px 14px;
+  }
 }
 </style>

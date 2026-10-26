@@ -1,22 +1,9 @@
 <script setup lang="ts">
 /**
- * 任务看板（P5，design 2.5.5 / 2.1.3-E）。
+ * 任务看板：四列纸质任务单。
  *
- * - 数据自治：挂载时 fetchBoard；defineExpose({ reload }) 供页面刷新。
- * - 四列按 BOARD_COLUMNS 固定顺序（todo/in_progress/done/review，裁定⑫）。
- * - 拖拽：原生 HTML5 四阶段（禁 vuedraggable）——
- *     dragstart（记录拖拽态，effectAllowed='move'，setData 兼容 Firefox）
- *     dragover.prevent（目标列高亮，可感知反馈）
- *     drop（同列短路不发请求，裁定⑮；否则乐观更新）
- *     dragend（无论成败必清理拖拽态与列高亮）
- * - 乐观更新与回滚：落地前暂存快照 → 本地立即移列 →
- *   PATCH /status → 成功用返回对象替换 + emit('changed')（+ 首次 done 时
- *   emit('task-done')；review→done 属复盘回流，不重复提示记录）；失败按
- *   快照回滚原列（错误提示由 request.ts 拦截器统一弹出，本组件 catch
- *   只回滚不重复弹错）。
- * - PATCH 进行中卡片入 pendingIds 置 drag-disabled，防重复快速拖拽。
- * - 「待复盘」列额外提供「标记已复盘」按钮（review→done）：拖拽之外
- *   的可发现入口，与拖拽共用 moveTask（同一状态机、乐观更新与回滚）。
+ * 数据自治、HTML5 拖拽、乐观更新与回滚逻辑保持不变；
+ * 视觉去掉 el-badge 和侧边色条，改用列首色点与优先级小方块。
  */
 import { onMounted, reactive, ref } from 'vue'
 
@@ -28,7 +15,6 @@ import {
   TASK_STATUS_LABELS,
   formatDeadline,
   isTaskOverdue,
-  priorityTagType,
 } from '@/utils/task'
 
 const emit = defineEmits<{
@@ -37,7 +23,6 @@ const emit = defineEmits<{
   (e: 'edit', task: Task): void
 }>()
 
-/** 看板数据（固定四键）。 */
 const board = reactive<TaskBoardData>({
   todo: [],
   in_progress: [],
@@ -47,15 +32,26 @@ const board = reactive<TaskBoardData>({
 
 const loading = ref(false)
 
-/** 拖拽态。 */
 const draggingId = ref<number | null>(null)
 const draggingFrom = ref<TaskStatus | null>(null)
 const dragOverCol = ref<TaskStatus | null>(null)
 
-/** PATCH 进行中的任务 id（防重复拖拽）。 */
 const pendingIds = reactive(new Set<number>())
 
-/** 拉取看板数据。 */
+/** 列首色点：待办/进行中/完成/复盘。 */
+const COLUMN_TONE: Record<TaskStatus, string> = {
+  todo: 'is-dust',
+  in_progress: 'is-ochre',
+  done: 'is-jade',
+  review: 'is-vermilion',
+}
+
+const PRIORITY_LABEL: Record<Task['priority'], string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
+}
+
 async function reload(): Promise<void> {
   loading.value = true
   try {
@@ -73,7 +69,6 @@ async function reload(): Promise<void> {
 
 onMounted(reload)
 
-/** dragstart：记录拖拽态（setData 兼容 Firefox 必调）。 */
 function onDragStart(e: DragEvent, task: Task, from: TaskStatus): void {
   draggingId.value = task.id
   draggingFrom.value = from
@@ -83,49 +78,38 @@ function onDragStart(e: DragEvent, task: Task, from: TaskStatus): void {
   }
 }
 
-/** drop：同列短路（裁定⑮）；异列执行乐观更新 + 失败回滚。 */
 async function onDrop(target: TaskStatus): Promise<void> {
   const id = draggingId.value
   const from = draggingFrom.value
   clearDragState()
   if (id == null || from == null) return
-  if (target === from) return // 同列落地：无操作、不发请求
+  if (target === from) return
 
   const task = board[from].find((t) => t.id === id)
   if (!task) return
   await moveTask(task, from, target)
 }
 
-/**
- * 异列流转（拖拽 drop 与「标记已复盘」按钮共用）：
- * 本地乐观移列 → PATCH /status → 成功替换为服务端对象，失败按快照回滚。
- */
 async function moveTask(task: Task, from: TaskStatus, target: TaskStatus): Promise<void> {
   if (from === target || pendingIds.has(task.id)) return
   const sourceList = board[from]
   const idx = sourceList.findIndex((t) => t.id === task.id)
   if (idx < 0) return
 
-  // 快照（乐观更新失败时按原索引回滚原列原位）
   const snapshot = { task: sourceList[idx], fromStatus: from, idx }
 
-  // 本地立即移列（乐观更新）
   sourceList.splice(idx, 1)
   board[target].unshift(task)
 
   pendingIds.add(task.id)
   try {
     const updated = await transitionTaskStatus(task.id, target)
-    // 成功：用后端返回对象替换本地行（completed_at 等以服务端为准）
     const list = board[target]
     const i = list.findIndex((t) => t.id === task.id)
     if (i >= 0) list[i] = updated
     emit('changed')
-    // 首次完成才提示记录学习；review→done 是复盘回流，不在重复提示
-    // （对齐后端 completed_at 首次语义，裁定⑤）。
     if (target === 'done' && from !== 'review') emit('task-done', updated)
   } catch {
-    // 失败：按快照回滚原列原索引位置（错误提示已由拦截器弹出，此处不重复弹错）
     const list = board[target]
     const i = list.findIndex((t) => t.id === task.id)
     if (i >= 0) list.splice(i, 1)
@@ -135,12 +119,10 @@ async function moveTask(task: Task, from: TaskStatus, target: TaskStatus): Promi
   }
 }
 
-/** 「标记已复盘」按钮：review → done（与拖拽同一路径）。 */
 function onMarkReviewed(task: Task): void {
   void moveTask(task, 'review', 'done')
 }
 
-/** dragend：无论成败必清理拖拽态与列高亮。 */
 function onDragEnd(): void {
   clearDragState()
 }
@@ -155,182 +137,300 @@ defineExpose({ reload })
 </script>
 
 <template>
-  <div v-loading="loading" class="board">
-    <div
-      v-for="col in BOARD_COLUMNS"
-      :key="col"
-      class="board-column"
-      :class="{
-        'drop-target': dragOverCol === col && draggingFrom !== null && draggingFrom !== col,
-      }"
-      @dragover.prevent="dragOverCol = col"
-      @dragleave="dragOverCol === col && (dragOverCol = null)"
-      @drop.prevent="onDrop(col)"
-    >
-      <div class="column-header">
-        <span>{{ TASK_STATUS_LABELS[col] }}</span>
-        <el-badge :value="board[col].length" type="info" class="column-count" />
-      </div>
-      <div class="card-list">
-        <div
-          v-for="t in board[col]"
-          :key="t.id"
-          class="task-card"
-          draggable="true"
-          :class="{ dragging: t.id === draggingId, 'drag-disabled': pendingIds.has(t.id) }"
-          @dragstart="(e: DragEvent) => onDragStart(e, t, col)"
-          @dragend="onDragEnd"
-          @click="emit('edit', t)"
-        >
-          <div class="card-title" :title="t.title">{{ t.title }}</div>
-          <div class="card-meta">
-            <el-tag :type="priorityTagType(t.priority)" size="small" effect="light">
-              {{ t.priority === 'high' ? '高' : t.priority === 'medium' ? '中' : '低' }}
-            </el-tag>
-            <span
-              class="card-deadline"
-              :class="{ 'overdue-text': isTaskOverdue(t) }"
-            >
-              {{ formatDeadline(t.deadline) }}
-              <template v-if="isTaskOverdue(t)">（已逾期）</template>
-            </span>
+  <div v-loading="loading" class="board-scroll">
+    <div class="board">
+      <section
+        v-for="col in BOARD_COLUMNS"
+        :key="col"
+        class="board-column"
+        :class="{
+          'drop-target': dragOverCol === col && draggingFrom !== null && draggingFrom !== col,
+        }"
+        :aria-label="TASK_STATUS_LABELS[col]"
+        @dragover.prevent="dragOverCol = col"
+        @dragleave="dragOverCol === col && (dragOverCol = null)"
+        @drop.prevent="onDrop(col)"
+      >
+        <header class="column-header">
+          <div class="column-title-row">
+            <span class="column-dot" :class="COLUMN_TONE[col]" aria-hidden="true" />
+            <span class="column-title">{{ TASK_STATUS_LABELS[col] }}</span>
           </div>
-          <div v-if="normalizeKnowledgePoints(t.knowledge_points).length > 0" class="card-kps">
-            <el-tag
-              v-for="k in normalizeKnowledgePoints(t.knowledge_points).slice(0, 3)"
-              :key="k"
-              size="small"
-              type="info"
-              effect="plain"
+          <span class="column-count">{{ board[col].length }}</span>
+        </header>
+
+        <div class="card-list">
+          <article
+            v-for="t in board[col]"
+            :key="t.id"
+            class="task-card"
+            draggable="true"
+            :class="{ dragging: t.id === draggingId, 'drag-disabled': pendingIds.has(t.id) }"
+            @dragstart="(e: DragEvent) => onDragStart(e, t, col)"
+            @dragend="onDragEnd"
+            @click="emit('edit', t)"
+          >
+            <div class="card-title" :title="t.title">{{ t.title }}</div>
+
+            <div class="card-meta">
+              <span class="priority" :class="`is-${t.priority}`">
+                <span class="priority__dot" aria-hidden="true" />
+                {{ PRIORITY_LABEL[t.priority] }}
+              </span>
+              <span class="card-deadline" :class="{ 'is-overdue': isTaskOverdue(t) }">
+                {{ formatDeadline(t.deadline) }}
+                <template v-if="isTaskOverdue(t)"> · 已逾期</template>
+              </span>
+            </div>
+
+            <div
+              v-if="normalizeKnowledgePoints(t.knowledge_points).length > 0"
+              class="card-kps"
             >
-              {{ k }}
-            </el-tag>
-            <el-tag
-              v-if="normalizeKnowledgePoints(t.knowledge_points).length > 3"
-              size="small"
-              type="info"
-              effect="plain"
-            >
-              +{{ normalizeKnowledgePoints(t.knowledge_points).length - 3 }}
-            </el-tag>
-          </div>
-          <div v-if="col === 'review'" class="card-footer">
-            <el-button
-              type="success"
-              size="small"
-              plain
-              :loading="pendingIds.has(t.id)"
-              :disabled="pendingIds.has(t.id)"
-              @click.stop="onMarkReviewed(t)"
-            >
-              标记已复盘
-            </el-button>
-          </div>
+              <span
+                v-for="k in normalizeKnowledgePoints(t.knowledge_points).slice(0, 3)"
+                :key="k"
+                class="kp"
+              >
+                {{ k }}
+              </span>
+              <span
+                v-if="normalizeKnowledgePoints(t.knowledge_points).length > 3"
+                class="kp kp--more"
+              >
+                +{{ normalizeKnowledgePoints(t.knowledge_points).length - 3 }}
+              </span>
+            </div>
+
+            <div v-if="col === 'review'" class="card-footer">
+              <el-button
+                link
+                type="success"
+                size="small"
+                :loading="pendingIds.has(t.id)"
+                :disabled="pendingIds.has(t.id)"
+                @click.stop="onMarkReviewed(t)"
+              >
+                标记已复盘
+              </el-button>
+            </div>
+          </article>
+
+          <div v-if="board[col].length === 0" class="column-empty">暂无任务</div>
         </div>
-        <div v-if="board[col].length === 0" class="column-empty">暂无任务</div>
-      </div>
+      </section>
     </div>
   </div>
 </template>
 
 <style scoped>
-.board {
-  display: flex;
-  gap: 12px;
+.board-scroll {
   width: 100%;
-  align-items: stretch;
-  min-height: 320px;
+  overflow-x: auto;
 }
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(210px, 1fr));
+  gap: 12px;
+  min-width: 880px;
+  align-items: stretch;
+}
+
 .board-column {
-  flex: 1 1 0;
-  min-width: 220px;
-  background: var(--el-fill-color-lighter);
-  border-radius: 8px;
-  padding: 10px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  transition: background-color 0.15s, border-color 0.15s;
-  border: 1px dashed transparent;
+  min-height: 360px;
+  padding: 12px;
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  transition: background-color 0.16s var(--ease), border-color 0.16s var(--ease);
 }
+
 .board-column.drop-target {
-  background: var(--el-color-primary-light-9);
-  border-color: var(--el-color-primary-light-5);
+  background: var(--vermilion-wash);
+  border-color: var(--vermilion);
+  border-style: dashed;
 }
+
 .column-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-weight: 600;
-  font-size: 14px;
+  gap: 8px;
+  padding-bottom: 10px;
   margin-bottom: 10px;
-  color: var(--el-text-color-primary);
+  border-bottom: 1px solid var(--line);
 }
-.column-count :deep(.el-badge__content) {
-  position: static;
-  transform: none;
+
+.column-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
+.column-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--dust);
+}
+
+.column-dot.is-ochre {
+  background: var(--ochre);
+}
+
+.column-dot.is-jade {
+  background: var(--jade);
+}
+
+.column-dot.is-vermilion {
+  background: var(--vermilion);
+}
+
+.column-dot.is-dust {
+  background: var(--dust);
+}
+
+.column-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.column-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
 .card-list {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+
 .task-card {
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-  padding: 10px;
+  padding: 11px 12px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   cursor: grab;
   user-select: none;
-  transition: opacity 0.15s, box-shadow 0.15s;
+  transition: border-color 0.16s var(--ease), box-shadow 0.16s var(--ease),
+    opacity 0.16s var(--ease);
 }
+
 .task-card:hover {
-  box-shadow: var(--el-box-shadow-light);
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-lift);
 }
+
 .task-card.dragging {
-  opacity: 0.45;
+  opacity: 0.42;
 }
+
 .task-card.drag-disabled {
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 0.66;
 }
+
 .card-title {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
-  margin-bottom: 6px;
+  line-height: 1.5;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--el-text-color-primary);
 }
+
 .card-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.card-deadline {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.card-deadline.overdue-text {
-  color: var(--el-color-danger);
-}
-.card-kps {
-  display: flex;
-  gap: 4px;
+  gap: 10px;
   flex-wrap: wrap;
   margin-top: 6px;
 }
+
+.priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.priority__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--dust);
+}
+
+.priority.is-high .priority__dot {
+  background: var(--vermilion);
+}
+
+.priority.is-medium .priority__dot {
+  background: var(--ochre);
+}
+
+.priority.is-low .priority__dot {
+  background: var(--dust);
+}
+
+.card-deadline {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-4);
+}
+
+.card-deadline.is-overdue {
+  color: var(--vermilion);
+}
+
+.card-kps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.kp {
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 17px;
+  color: var(--ink-3);
+  background: var(--paper-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+.kp--more {
+  color: var(--ink-4);
+}
+
 .card-footer {
   display: flex;
   justify-content: flex-end;
   margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
 }
+
 .column-empty {
+  padding: 18px 8px;
   text-align: center;
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
-  padding: 16px 0;
+  font-size: 11px;
+  color: var(--ink-4);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
 }
 </style>

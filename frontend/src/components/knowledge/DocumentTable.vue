@@ -40,15 +40,6 @@ const emit = defineEmits<{
   (e: 'page-change', page: number): void
 }>()
 
-/** 类型 tag 颜色（五格式固定映射，纯展示）。 */
-const TYPE_TAG: Record<string, string> = {
-  pdf: 'danger',
-  docx: 'primary',
-  pptx: 'warning',
-  md: 'success',
-  txt: 'info',
-}
-
 /** 删除确认并发防抖（ElMessageBox 期间禁止二次点击）。 */
 const deletingIds = new Set<number>()
 
@@ -89,101 +80,196 @@ async function handleReindex(item: KnowledgeItem): Promise<void> {
 </script>
 
 <template>
-  <el-table :data="props.items" v-loading="props.loading" stripe>
-    <el-table-column label="标题" min-width="220" show-overflow-tooltip>
-      <template #default="{ row }">
-        <span>{{ row.title }}</span>
-      </template>
-    </el-table-column>
-    <el-table-column label="类型" width="80">
-      <template #default="{ row }">
-        <el-tag :type="TYPE_TAG[row.source_type] ?? 'info'" size="small" effect="plain">
-          {{ row.source_type.toUpperCase() }}
+  <div v-loading="props.loading" class="doc-list">
+    <div v-if="props.items.length === 0" class="empty-note">
+      <span class="seal seal--ghost" aria-hidden="true">藏</span>
+      <div class="empty-note__title">还没有文档</div>
+      <div>把 PDF、Word 或笔记拖进左侧上传区。</div>
+    </div>
+
+    <article v-for="item in props.items" :key="item.id" class="doc-row">
+      <div class="doc-type" :class="`is-${item.source_type}`">
+        {{ item.source_type.toUpperCase() }}
+      </div>
+
+      <div class="doc-main">
+        <div class="doc-title" :title="item.title">{{ item.title }}</div>
+        <div class="doc-meta">
+          <span>{{ formatFileSize(item.file_size) }}</span>
+          <span class="doc-dot">·</span>
+          <span>{{ item.chunk_count }} 块</span>
+          <span class="doc-dot">·</span>
+          <span>{{ formatDateTime(item.created_at) }}</span>
+        </div>
+        <div v-if="item.status === 'failed'" class="doc-error">
+          {{ item.error_msg ?? '解析失败，可尝试重新索引' }}
+        </div>
+      </div>
+
+      <div class="doc-status">
+        <el-tag
+          :type="KB_STATUS_META[item.status as keyof typeof KB_STATUS_META].tag"
+          size="small"
+        >
+          <span v-if="isKbProcessing(item.status)" class="status-loading" />
+          {{ KB_STATUS_META[item.status as keyof typeof KB_STATUS_META].label }}
         </el-tag>
-      </template>
-    </el-table-column>
-    <el-table-column label="大小" width="90">
-      <template #default="{ row }">{{ formatFileSize(row.file_size) }}</template>
-    </el-table-column>
-    <el-table-column label="分块数" width="80" align="center">
-      <template #default="{ row }">{{ row.chunk_count }}</template>
-    </el-table-column>
-    <el-table-column label="状态" width="100">
-      <template #default="{ row }">
-        <el-tag :type="KB_STATUS_META[row.status as keyof typeof KB_STATUS_META].tag" size="small">
-          <span v-if="isKbProcessing(row.status)" class="status-loading" />
-          {{ KB_STATUS_META[row.status as keyof typeof KB_STATUS_META].label }}
-        </el-tag>
-      </template>
-    </el-table-column>
-    <el-table-column label="失败原因" min-width="180" show-overflow-tooltip>
-      <template #default="{ row }">
-        <span v-if="row.status === 'failed'" class="error-msg">{{ row.error_msg ?? '—' }}</span>
-        <span v-else>—</span>
-      </template>
-    </el-table-column>
-    <el-table-column label="上传时间" width="150">
-      <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
-    </el-table-column>
-    <el-table-column label="操作" width="210" fixed="right">
-      <template #default="{ row }">
+      </div>
+
+      <div class="doc-actions">
         <el-button
-          v-if="row.status === 'indexed'"
+          v-if="item.status === 'indexed'"
           link
           type="primary"
           size="small"
-          @click="emit('view-chunks', row)"
+          @click="emit('view-chunks', item)"
         >
           查看分块
         </el-button>
         <el-button
           link
-          type="warning"
           size="small"
-          :disabled="isKbProcessing(row.status)"
-          @click="handleReindex(row)"
+          :disabled="isKbProcessing(item.status)"
+          @click="handleReindex(item)"
         >
           重新索引
         </el-button>
-        <el-button
-          link
-          type="danger"
-          size="small"
-          @click="handleDelete(row)"
-        >
+        <el-button link type="danger" size="small" @click="handleDelete(item)">
           删除
         </el-button>
-      </template>
-    </el-table-column>
-    <template #empty>
-      <el-empty description="暂无文档，拖拽上传试试" :image-size="80" />
-    </template>
-  </el-table>
-  <div class="table-footer">
-    <el-pagination
-      layout="total, prev, pager, next"
-      :total="props.total"
-      :page-size="props.pageSize"
-      :current-page="props.page"
-      @current-change="(p: number) => emit('page-change', p)"
-    />
+      </div>
+    </article>
+
+    <div v-if="props.total > 0" class="table-footer">
+      <el-pagination
+        layout="total, prev, pager, next"
+        :total="props.total"
+        :page-size="props.pageSize"
+        :current-page="props.page"
+        @current-change="(p: number) => emit('page-change', p)"
+      />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.error-msg {
-  color: var(--el-color-danger);
-  font-size: 13px;
+.doc-list {
+  min-height: 120px;
 }
+
+.doc-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line-soft);
+  transition: background-color 0.16s var(--ease);
+}
+
+.doc-row:hover {
+  background: var(--paper-3);
+}
+
+.doc-row:last-of-type {
+  border-bottom: none;
+}
+
+.doc-type {
+  flex: 0 0 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.doc-type.is-pdf {
+  color: #8f3325;
+  background: var(--vermilion-wash);
+  border-color: #e4b6ac;
+}
+
+.doc-type.is-md {
+  color: #33513e;
+  background: var(--jade-wash);
+  border-color: #b3c9b9;
+}
+
+.doc-type.is-pptx {
+  color: #7a5318;
+  background: var(--ochre-wash);
+  border-color: #ddc79b;
+}
+
+.doc-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.doc-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-4);
+}
+
+.doc-dot {
+  color: var(--line-strong);
+}
+
+.doc-error {
+  margin-top: 5px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--vermilion);
+}
+
+.doc-status {
+  flex: 0 0 auto;
+  padding-top: 6px;
+}
+
+.doc-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 190px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
 .table-footer {
-  margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
 }
+
 .status-loading {
   display: inline-block;
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   margin-right: 4px;
   border: 2px solid currentColor;
   border-top-color: transparent;
@@ -191,9 +277,32 @@ async function handleReindex(item: KnowledgeItem): Promise<void> {
   animation: kb-spin 0.8s linear infinite;
   vertical-align: -1px;
 }
+
 @keyframes kb-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .doc-row {
+    flex-wrap: wrap;
+  }
+
+  .doc-main {
+    flex-basis: calc(100% - 44px);
+  }
+
+  .doc-status {
+    margin-left: 44px;
+    padding-top: 6px;
+  }
+
+  .doc-actions {
+    flex: 1 1 auto;
+    max-width: none;
+    justify-content: flex-end;
+    padding: 8px 0 0 8px;
   }
 }
 </style>

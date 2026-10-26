@@ -81,61 +81,76 @@ function onCardClick(): void {
 
 <style scoped>
 .source-card {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-  padding: 10px 12px;
-  background: var(--el-fill-color-light);
+  padding: 9px 11px;
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  transition: border-color 0.16s var(--ease), background-color 0.16s var(--ease);
 }
+
 .source-card.clickable {
   cursor: pointer;
 }
+
 .source-card.clickable:hover {
-  border-color: var(--el-color-primary-light-5);
+  border-color: var(--vermilion);
+  background: var(--vermilion-wash);
 }
+
 .source-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
 }
+
 .source-index {
   flex: 0 0 auto;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
   font-weight: 600;
-  color: var(--el-color-primary);
+  color: var(--vermilion);
 }
+
 .source-title {
   flex: 1 1 auto;
-  font-size: 12px;
-  color: var(--el-text-color-regular);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
+  color: var(--ink-2);
 }
+
 .source-scope {
   flex: 0 0 auto;
 }
+
 .source-content {
   margin: 0 0 6px;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.7;
-  color: var(--el-text-color-regular);
+  color: var(--ink-3);
   white-space: pre-wrap;
   word-break: break-word;
 }
+
 .source-content.collapsed {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
 .source-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
+
 .source-score {
-  font-size: 12px;
-  color: var(--el-color-primary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-4);
 }
 </style>

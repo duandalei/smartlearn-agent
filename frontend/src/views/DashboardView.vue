@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 
+import PageHeader from '@/components/common/PageHeader.vue'
 import AdviceCard from '@/components/dashboard/AdviceCard.vue'
 import MasteryChart from '@/components/dashboard/MasteryChart.vue'
 import MetricCards from '@/components/dashboard/MetricCards.vue'
@@ -16,6 +18,7 @@ import {
 } from '@/api/dashboard'
 import { useDashboardBlock } from '@/composables/useDashboardBlock'
 
+const router = useRouter()
 const trendDays = ref(30)
 
 const {
@@ -60,7 +63,18 @@ function handleTrendDaysChange(days: number): void {
 </script>
 
 <template>
-  <div class="dashboard-view">
+  <div class="page dashboard-view">
+    <PageHeader
+      folio="卷一 · 今日"
+      title="学习中心"
+      lead="今天的学习状态、近期趋势，以及最值得先做的一件事。"
+    >
+      <template #actions>
+        <el-button @click="router.push('/learning-records')">记录学习</el-button>
+        <el-button type="primary" @click="router.push('/ai-agent')">问 AI 助手</el-button>
+      </template>
+    </PageHeader>
+
     <MetricCards
       :data="overviewData"
       :loading="overviewLoading"
@@ -68,76 +82,87 @@ function handleTrendDaysChange(days: number): void {
       :reload="reloadOverview"
     />
 
-    <el-row :gutter="16" class="dashboard-row">
-      <el-col :xs="24" :lg="16">
-        <TrendChart
-          :data="trendData"
-          :loading="trendLoading"
-          :error="trendError"
-          :reload="reloadTrend"
-          :days="trendDays"
-          :on-days-change="handleTrendDaysChange"
-        />
-      </el-col>
-      <el-col :xs="24" :lg="8">
-        <AdviceCard
-          :data="adviceData"
-          :loading="adviceLoading"
-          :error="adviceError"
-          :reload="reloadAdvice"
-        />
-      </el-col>
-    </el-row>
+    <div class="dash-grid">
+      <TrendChart
+        :data="trendData"
+        :loading="trendLoading"
+        :error="trendError"
+        :reload="reloadTrend"
+        :days="trendDays"
+        :on-days-change="handleTrendDaysChange"
+      />
+      <AdviceCard
+        :data="adviceData"
+        :loading="adviceLoading"
+        :error="adviceError"
+        :reload="reloadAdvice"
+      />
+    </div>
 
-    <el-row :gutter="16" class="dashboard-row">
-      <el-col :xs="24" :lg="16">
-        <el-card shadow="never">
-          <template #header>
-            <span class="card-title">知识掌握情况</span>
-          </template>
+    <div class="dash-grid">
+      <section class="panel mastery-panel">
+        <div class="panel__head">
+          <div>
+            <div class="panel__title">知识掌握</div>
+            <div class="panel__sub">按知识点平均掌握度，虚线为 60 分参照</div>
+          </div>
+          <span class="seal seal--sm seal--ghost" aria-hidden="true">学</span>
+        </div>
+        <div class="panel__body">
           <MasteryChart
             :data="masteryData"
             :loading="masteryLoading"
             :error="masteryError"
             :reload="reloadMastery"
           />
-          <el-divider class="mastery-divider" />
-          <div class="weakness-title">薄弱知识点 Top5</div>
+
+          <div class="mastery-rule" aria-hidden="true" />
+
+          <div class="section-head">
+            <div class="section-title">薄弱知识点</div>
+            <span class="section-note">近 30 天 · Top 5</span>
+          </div>
+
           <WeaknessList
             :data="weaknessData"
             :loading="weaknessLoading"
             :error="weaknessError"
             :reload="reloadWeakness"
           />
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :lg="8">
-        <RiskAlertCard
-          :alert="trendData?.risk_alert ?? null"
-          :loading="trendLoading"
-          :error="trendError"
-          :reload="reloadTrend"
-        />
-      </el-col>
-    </el-row>
+        </div>
+      </section>
+
+      <RiskAlertCard
+        :alert="trendData?.risk_alert ?? null"
+        :loading="trendLoading"
+        :error="trendError"
+        :reload="reloadTrend"
+      />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.dashboard-row {
-  margin-top: 16px;
+.dash-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.85fr) minmax(300px, 1fr);
+  gap: 20px;
+  align-items: stretch;
 }
-.card-title {
-  font-size: 15px;
-  font-weight: 600;
+
+.mastery-panel {
+  min-width: 0;
 }
-.mastery-divider {
-  margin: 16px 0 8px;
+
+.mastery-rule {
+  height: 1px;
+  margin: 22px 0 18px;
+  background: var(--line);
 }
-.weakness-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--el-text-color-primary);
-  margin-bottom: 4px;
+
+@media (max-width: 1100px) {
+  .dash-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

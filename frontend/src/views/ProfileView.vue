@@ -11,6 +11,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 
+import PageHeader from '@/components/common/PageHeader.vue'
 import { fetchProfile, updateProfile } from '@/api/profile'
 import type { UserProfile, UserProfileUpdatePayload } from '@/types'
 
@@ -147,150 +148,167 @@ onMounted(loadProfile)
 </script>
 
 <template>
-  <el-space direction="vertical" alignment="stretch" :size="16" style="width: 100%">
-    <el-card shadow="never" v-loading="pageLoading">
-      <template #header>
-        <div class="card-header">
-          <span>学习档案</span>
-          <span class="card-header-sub">用于个性化推荐与 AI 助手上下文</span>
+  <div class="page profile-view">
+    <PageHeader
+      folio="卷八 · 本人"
+      title="学习档案"
+      lead="这些信息用于个性化推荐和 AI 助手上下文；随时可以修改。"
+    />
+
+    <section v-loading="pageLoading" class="panel">
+      <div class="panel__head">
+        <div>
+          <div class="panel__title">基本信息</div>
+          <div class="panel__sub">只保存在本机，不会上传</div>
         </div>
-      </template>
+        <span class="seal seal--sm seal--ghost" aria-hidden="true">人</span>
+      </div>
 
-      <el-form :model="form" label-position="top" class="profile-form">
-        <el-row :gutter="24">
-          <el-col :span="12">
-            <el-form-item label="姓名">
-              <el-input v-model="form.name" placeholder="请输入姓名" maxlength="50" clearable />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="学校">
-              <el-select
-                v-model="form.school"
-                placeholder="选择或输入学校"
-                filterable
-                allow-create
-                default-first-option
-                clearable
-              >
-                <el-option v-for="o in schoolOptions" :key="o" :label="o" :value="o" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
+      <div class="panel__body">
+        <el-form :model="form" label-position="top" class="profile-form">
+          <div class="form-section">
+            <div class="form-section__title">身份</div>
+            <el-row :gutter="24">
+              <el-col :xs="24" :sm="12">
+                <el-form-item label="姓名">
+                  <el-input v-model="form.name" placeholder="请输入姓名" maxlength="50" clearable />
+                </el-form-item>
+              </el-col>
+              <el-col :xs="24" :sm="12">
+                <el-form-item label="学校">
+                  <el-select
+                    v-model="form.school"
+                    placeholder="选择或输入学校"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                  >
+                    <el-option v-for="o in schoolOptions" :key="o" :label="o" :value="o" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
 
-        <el-row :gutter="24">
-          <el-col :span="12">
-            <el-form-item label="专业">
-              <el-select
-                v-model="form.major"
-                placeholder="选择或输入专业"
-                filterable
-                allow-create
-                default-first-option
-                clearable
-              >
-                <el-option v-for="o in majorOptions" :key="o" :label="o" :value="o" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="年级">
-              <el-select
-                v-model="form.grade"
-                placeholder="选择或输入年级"
-                filterable
-                allow-create
-                default-first-option
-                clearable
-              >
-                <el-option v-for="o in gradeOptions" :key="o" :label="o" :value="o" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row :gutter="24">
-          <el-col :span="12">
-            <el-form-item label="当前目标类型">
-              <el-select
-                v-model="form.current_goal_type"
-                placeholder="选择或输入目标类型"
-                filterable
-                allow-create
-                default-first-option
-                clearable
-              >
-                <el-option v-for="o in goalTypeOptions" :key="o" :label="o" :value="o" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="兴趣方向">
-              <el-select
-                v-model="form.interest_directions"
-                placeholder="选择或输入兴趣标签（可多选）"
-                multiple
-                filterable
-                allow-create
-                default-first-option
-                class="interest-select"
-              >
-                <el-option v-for="o in interestOptions" :key="o" :label="o" :value="o" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-form-item label="每日学习时长">
-          <div class="slider-row">
-            <el-slider
-              v-model="form.daily_study_minutes"
-              :min="15"
-              :max="600"
-              :step="15"
-              show-input
-              :show-input-controls="false"
-            />
+            <el-row :gutter="24">
+              <el-col :xs="24" :sm="12">
+                <el-form-item label="专业">
+                  <el-select
+                    v-model="form.major"
+                    placeholder="选择或输入专业"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                  >
+                    <el-option v-for="o in majorOptions" :key="o" :label="o" :value="o" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :xs="24" :sm="12">
+                <el-form-item label="年级">
+                  <el-select
+                    v-model="form.grade"
+                    placeholder="选择或输入年级"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                  >
+                    <el-option v-for="o in gradeOptions" :key="o" :label="o" :value="o" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
           </div>
-          <div class="slider-hint">当前：{{ dailyMinutesLabel }}（范围 15 - 600 分钟）</div>
-        </el-form-item>
 
-        <el-form-item>
-          <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-  </el-space>
+          <div class="form-section">
+            <div class="form-section__title">学习方向</div>
+            <el-row :gutter="24">
+              <el-col :xs="24" :sm="12">
+                <el-form-item label="当前目标类型">
+                  <el-select
+                    v-model="form.current_goal_type"
+                    placeholder="选择或输入目标类型"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                  >
+                    <el-option v-for="o in goalTypeOptions" :key="o" :label="o" :value="o" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :xs="24" :sm="12">
+                <el-form-item label="兴趣方向">
+                  <el-select
+                    v-model="form.interest_directions"
+                    placeholder="选择或输入兴趣标签（可多选）"
+                    multiple
+                    filterable
+                    allow-create
+                    default-first-option
+                    class="interest-select"
+                  >
+                    <el-option v-for="o in interestOptions" :key="o" :label="o" :value="o" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section__title">每日节奏</div>
+            <el-form-item label="每日学习时长">
+              <div class="slider-row">
+                <el-slider
+                  v-model="form.daily_study_minutes"
+                  :min="15"
+                  :max="600"
+                  :step="15"
+                  show-input
+                  :show-input-controls="false"
+                />
+              </div>
+              <div class="slider-hint">
+                当前：{{ dailyMinutesLabel }}（范围 15 - 600 分钟）
+              </div>
+            </el-form-item>
+          </div>
+
+          <div class="form-actions">
+            <el-button type="primary" :loading="saving" @click="handleSave">保存档案</el-button>
+            <span class="form-actions__hint">只提交发生变化的字段</span>
+          </div>
+        </el-form>
+      </div>
+    </section>
+  </div>
 </template>
 
 <style scoped>
-.card-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-.card-header-sub {
-  font-size: 13px;
-  color: #909399;
-}
 .profile-form {
-  max-width: 760px;
+  max-width: 820px;
 }
+
 .profile-form :deep(.el-select) {
   width: 100%;
 }
+
 .interest-select :deep(.el-select__wrapper) {
   flex-wrap: wrap;
 }
+
 .slider-row {
   width: 100%;
   padding: 0 8px;
 }
+
 .slider-hint {
   width: 100%;
-  font-size: 12px;
-  color: #909399;
-  margin-top: 4px;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-4);
 }
 </style>

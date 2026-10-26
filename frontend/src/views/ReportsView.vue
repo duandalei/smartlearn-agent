@@ -18,6 +18,7 @@ import { ElMessage } from 'element-plus'
 
 import { fetchReports, generateReport } from '@/api/report'
 import type { Report, ReportType } from '@/types/report'
+import PageHeader from '@/components/common/PageHeader.vue'
 import ReportCard from '@/components/report/ReportCard.vue'
 import { REPORT_TYPE_LABELS } from '@/utils/report'
 
@@ -113,19 +114,25 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="reports-view">
-    <div class="toolbar">
-      <el-tooltip content="同一周期重复生成会追加新报告行" placement="bottom">
-        <el-button
-          type="primary"
-          :loading="generatingReport"
-          :disabled="tabState[activeType].loading"
-          @click="handleGenerateReport"
-        >
-          生成报告
-        </el-button>
-      </el-tooltip>
-    </div>
+  <div class="page reports-view">
+    <PageHeader
+      folio="卷七 · 回望"
+      title="成长报告"
+      lead="按天、周、月回看学习轨迹；报告会指出变化，而不只是罗列数字。"
+    >
+      <template #actions>
+        <el-tooltip content="同一周期重复生成会追加新报告行" placement="bottom">
+          <el-button
+            type="primary"
+            :loading="generatingReport"
+            :disabled="tabState[activeType].loading"
+            @click="handleGenerateReport"
+          >
+            生成当前周期报告
+          </el-button>
+        </el-tooltip>
+      </template>
+    </PageHeader>
 
     <el-tabs :model-value="activeType" @tab-change="handleTabChange">
       <el-tab-pane
@@ -135,18 +142,29 @@ onMounted(() => {
         :name="type"
       >
         <!-- 首次加载骨架（loaded=false 且飞行中） -->
-        <el-skeleton v-if="tabState[type].loading && !tabState[type].loaded" :rows="6" animated />
+        <el-skeleton v-if="tabState[type].loading && !tabState[type].loaded" :rows="8" animated />
 
         <template v-else-if="tabState[type].loaded">
           <!-- 空态：无分页器，含生成入口（spec §5.5.1 规则 8） -->
-          <el-empty v-if="tabState[type].total === 0" description="暂无该类型报告">
-            <el-button type="primary" :loading="generatingReport" @click="handleGenerateReport">
-              生成报告
-            </el-button>
-          </el-empty>
+          <div v-if="tabState[type].total === 0" class="empty-note report-empty">
+            <span class="seal seal--ghost" aria-hidden="true">报</span>
+            <div class="empty-note__title">还没有{{ REPORT_TYPE_LABELS[type] }}报告</div>
+            <div>生成第一份，回看这一段时间的学习轨迹。</div>
+            <div class="empty-note__actions">
+              <el-button type="primary" :loading="generatingReport" @click="handleGenerateReport">
+                生成报告
+              </el-button>
+            </div>
+          </div>
 
           <template v-else>
-            <ReportCard v-for="report in tabState[type].items" :key="report.id" :report="report" />
+            <div class="report-list">
+              <ReportCard
+                v-for="report in tabState[type].items"
+                :key="report.id"
+                :report="report"
+              />
+            </div>
             <el-pagination
               class="pager"
               :total="tabState[type].total"
@@ -163,17 +181,19 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.reports-view {
+.report-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 18px;
 }
-.toolbar {
+
+.report-empty {
+  padding: 56px 24px;
+}
+
+.pager {
   display: flex;
   justify-content: flex-end;
-}
-.pager {
-  margin-top: 12px;
-  justify-content: flex-end;
+  padding-top: 18px;
 }
 </style>

@@ -25,6 +25,7 @@ const props = defineProps<{
 
 const chartEl = ref<HTMLDivElement>()
 let chart: echarts.EChartsType | null = null
+let resizeObserver: ResizeObserver | null = null
 
 function handleResize(): void {
   chart?.resize()
@@ -35,6 +36,12 @@ onMounted(() => {
   chart = echarts.init(chartEl.value)
   chart.setOption(props.option)
   window.addEventListener('resize', handleResize)
+
+  // 容器高度会随数据量变化（如掌握度条目增多），必须跟着重算画布。
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(handleResize)
+    resizeObserver.observe(chartEl.value)
+  }
 })
 
 watch(
@@ -46,6 +53,8 @@ watch(
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  resizeObserver?.disconnect()
+  resizeObserver = null
   chart?.dispose()
   chart = null
 })

@@ -1,12 +1,6 @@
 <script setup lang="ts">
 /**
- * 调整记录回看面板（P13；design 2.4.4；spec §5.4.1 规则 2/4、§5.4.3-2）。
- *
- * 降级形态：plan.adjust_reason 显著展示 + 三类改动清单（与 PlanDiffPreview ③
- * 同构样式，各自局部模板块不抽公共子组件）。无双栏网格（parent 版本条目需
- * 全量翻页取回，回看属低频能力不付此开销）；无任何操作类按钮（调整早已生效）。
- *
- * 时间显示：diff 时间位经 formatHm 截取 'HH:MM'；null → 「休息时段」。
+ * 调整记录回看面板（只读，不含任何回退操作）。
  */
 import { computed } from 'vue'
 
@@ -23,14 +17,12 @@ const emit = defineEmits<{
   (e: 'back'): void
 }>()
 
-/** 空结构判定：三类清单全空 → 「该版本无调整记录」（spec §5.4.3-2）。 */
 const isDiffEmpty = computed(() => {
   const d = props.diff
   if (!d) return false
   return d.moved.length === 0 && d.added.length === 0 && d.removed.length === 0
 })
 
-/** 时间位展示：null → 「休息时段」；否则 formatHm 截取 'HH:MM'。 */
 function hmOrRest(t: string | null): string {
   return t == null ? '休息时段' : formatHm(t)
 }
@@ -39,7 +31,10 @@ function hmOrRest(t: string | null): string {
 <template>
   <div class="history-panel">
     <div class="head-row">
-      <div class="panel-title">调整记录 · v{{ plan.version }}</div>
+      <div>
+        <div class="panel-kicker">调整记录</div>
+        <h2 class="panel-title">v{{ plan.version }} 的计划版本</h2>
+      </div>
       <el-button plain @click="emit('back')">返回周视图</el-button>
     </div>
 
@@ -49,20 +44,27 @@ function hmOrRest(t: string | null): string {
     </div>
 
     <el-skeleton v-if="loading" :rows="4" animated class="list-skeleton" />
+
     <template v-else-if="diff">
-      <div v-if="isDiffEmpty" class="diff-empty">该版本无调整记录</div>
-      <div v-else class="change-list">
-        <div v-for="(m, i) in diff.moved" :key="`m${i}`" class="change-item">
-          {{ m.topic }}：从 {{ m.from_date }} {{ hmOrRest(m.from_time) }} 挪到
-          {{ m.to_date }} {{ hmOrRest(m.to_time) }}（{{ m.reason }}）
-        </div>
-        <div v-for="(r, i) in diff.removed" :key="`r${i}`" class="change-item">
-          {{ r.topic }} 被移出计划（{{ r.reason }}）
-        </div>
-        <div v-for="(a, i) in diff.added" :key="`a${i}`" class="change-item">
-          新增：{{ a.topic }}（{{ a.reason }}）
-        </div>
-      </div>
+      <div v-if="isDiffEmpty" class="diff-empty">该版本没有条目变动</div>
+
+      <ul v-else class="change-list">
+        <li v-for="(m, i) in diff.moved" :key="`m${i}`" class="change-item">
+          <span class="change-tag is-moved">移动</span>
+          <span class="change-text">
+            {{ m.topic }}：从 {{ m.from_date }} {{ hmOrRest(m.from_time) }} 挪到
+            {{ m.to_date }} {{ hmOrRest(m.to_time) }}（{{ m.reason }}）
+          </span>
+        </li>
+        <li v-for="(r, i) in diff.removed" :key="`r${i}`" class="change-item">
+          <span class="change-tag is-removed">移除</span>
+          <span class="change-text">{{ r.topic }} 被移出计划（{{ r.reason }}）</span>
+        </li>
+        <li v-for="(a, i) in diff.added" :key="`a${i}`" class="change-item">
+          <span class="change-tag is-added">新增</span>
+          <span class="change-text">新增：{{ a.topic }}（{{ a.reason }}）</span>
+        </li>
+      </ul>
     </template>
   </div>
 </template>
@@ -71,51 +73,128 @@ function hmOrRest(t: string | null): string {
 .history-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
+
 .head-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
 }
+
+.panel-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--vermilion);
+}
+
+.panel-kicker::before {
+  content: '';
+  width: 14px;
+  height: 1px;
+  background: var(--vermilion);
+}
+
 .panel-title {
-  font-size: 16px;
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-size: 24px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
+  line-height: 1.3;
+  color: var(--ink);
 }
+
 .reason-card {
-  background: var(--el-color-warning-light-9);
-  border-left: 4px solid var(--el-color-warning);
-  border-radius: 4px;
-  padding: 12px 16px;
+  padding: 16px;
+  background: var(--ochre-wash);
+  border: 1px solid #ddc79b;
+  border-radius: var(--radius);
 }
+
 .reason-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: #8a6425;
 }
+
 .reason-text {
-  font-size: 15px;
-  line-height: 1.7;
-  color: var(--el-text-color-primary);
+  margin-top: 7px;
+  font-size: 14px;
+  line-height: 1.75;
+  color: #4d3a16;
 }
+
 .list-skeleton {
-  padding: 12px 0;
+  padding: 8px 0;
 }
+
 .change-list {
-  background: var(--el-fill-color-light);
-  border-radius: 6px;
-  padding: 12px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
+
 .change-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line-soft);
   font-size: 13px;
-  line-height: 2;
-  color: var(--el-text-color-primary);
+  line-height: 1.7;
+  color: var(--ink-2);
 }
+
+.change-item:last-child {
+  border-bottom: none;
+}
+
+.change-tag {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 17px;
+  color: var(--ink-3);
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.change-tag.is-moved {
+  color: #7a5318;
+  background: var(--ochre-wash);
+  border-color: #ddc79b;
+}
+
+.change-tag.is-added {
+  color: #33513e;
+  background: var(--jade-wash);
+  border-color: #b3c9b9;
+}
+
+.change-tag.is-removed {
+  color: #7a2a20;
+  background: var(--danger-wash);
+  border-color: #d8aaa2;
+}
+
+.change-text {
+  min-width: 0;
+}
+
 .diff-empty {
+  padding: 20px 0;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
-  padding: 12px 0;
+  color: var(--ink-3);
 }
 </style>

@@ -1,12 +1,14 @@
 /**
  * 应用入口：装配 Vue、Pinia（含持久化）、Vue Router、Element Plus。
+ *
+ * 图标由使用方按需 import（MessageItem / ToolCallCard），不再全量全局注册，
+ * 避免把整套图标打进首屏包。
  */
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
 import ElementPlus from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 import 'element-plus/dist/index.css'
 
@@ -23,10 +25,5 @@ pinia.use(piniaPluginPersistedstate)
 app.use(pinia)
 app.use(router)
 app.use(ElementPlus, { locale: zhCn })
-
-// 全局注册 Element Plus 图标
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component)
-}
 
 app.mount('#app')

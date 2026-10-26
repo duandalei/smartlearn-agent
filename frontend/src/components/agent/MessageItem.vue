@@ -37,6 +37,8 @@ const STOPPED_TEXT = '已停止生成'
 const props = defineProps<{
   /** 视图消息（user 气泡 / assistant segments 块）。 */
   message: ViewMessage
+  /** 紧随上一条助手消息时不再重复显示「助手」标记。 */
+  isContinuation?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -108,7 +110,11 @@ function thinkingLabel(round: number | null): string {
   </div>
 
   <!-- assistant 块：segments 保序渲染 + 块末固定区 -->
-  <div v-else-if="assistant" class="bubble-row">
+  <div v-else-if="assistant" class="bubble-row assistant-row">
+    <div v-if="!props.isContinuation" class="assistant-head">
+      <span class="seal seal--sm seal--ghost" aria-hidden="true">智</span>
+      <span class="assistant-label">助手</span>
+    </div>
     <div class="bubble assistant">
       <template v-for="(segment, idx) in assistant.segments" :key="idx">
         <!-- thinking 轮次信号行（轻量；done 弱化保留） -->
@@ -172,73 +178,107 @@ function thinkingLabel(round: number | null): string {
   flex-direction: column;
   align-items: flex-start;
 }
+
 .bubble-row.mine {
   align-items: flex-end;
 }
+
 .bubble {
-  max-width: 86%;
-  border-radius: 8px;
-  padding: 12px 14px;
+  max-width: 84%;
+  border-radius: var(--radius);
+  padding: 12px 15px;
   font-size: 14px;
   line-height: 1.8;
   word-break: break-word;
 }
+
 .bubble.user {
-  background: var(--el-color-primary);
-  color: #ffffff;
-  border-bottom-right-radius: 2px;
+  background: var(--ink);
+  color: var(--paper-2);
   white-space: pre-wrap;
 }
+
+.assistant-row {
+  align-items: stretch;
+}
+
+.assistant-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+}
+
+.assistant-label {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+/* 助手正文不套气泡：让工具卡与来源卡直接落在纸面上，避免卡中卡 */
 .bubble.assistant {
-  background: #ffffff;
-  border: 1px solid var(--el-border-color-lighter);
-  border-bottom-left-radius: 2px;
+  max-width: 88%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--ink-2);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
 }
-/* thinking 轻量行：小字号浅灰单行（O6——禁遮罩禁大面积 loading） */
+
+/* thinking 轻量行：小字号单行，不遮罩 */
 .thinking-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
 }
+
 .thinking-row.done {
-  color: var(--el-text-color-placeholder);
+  color: var(--ink-4);
 }
+
 .thinking-row .spin {
-  color: var(--el-text-color-secondary);
+  color: var(--vermilion);
 }
+
 .thinking-content {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 70%;
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-4);
 }
-/* 工具卡片段间距（堆叠 gap 6px——4 连卡片 162px 计算的分母） */
+
 .tool-segment {
   margin: 0;
 }
+
 .tool-segment + .tool-segment {
   margin-top: 6px;
 }
+
 .content {
   white-space: pre-wrap;
   min-height: 22px;
 }
+
 .cursor {
   display: inline-block;
   width: 2px;
   height: 16px;
   margin-left: 2px;
-  background: var(--el-color-primary);
+  background: var(--vermilion);
   animation: blink 0.9s infinite;
   vertical-align: middle;
 }
+
 @keyframes blink {
   0%,
   100% {
@@ -248,28 +288,32 @@ function thinkingLabel(round: number | null): string {
     opacity: 0;
   }
 }
-/* 收尾提示：轻量信息条（非弹窗非错误红） */
+
 .finish-hint {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  color: var(--ink-3);
 }
-/* O8 统计小字：小号灰字、无 badge 无底色（弱化——不像调试信息） */
+
 .stats-text {
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  color: var(--ink-4);
 }
+
 .inline-alert {
   margin: 0;
 }
-/* 已停止标记：轻量非错误样式 */
+
 .stopped-mark {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-4);
 }
 </style>

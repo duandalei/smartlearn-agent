@@ -16,6 +16,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { fetchCourses } from '@/api/course'
 import { deleteRecord, fetchRecordStats, fetchRecords } from '@/api/record'
+import PageHeader from '@/components/common/PageHeader.vue'
 import RecordFormDialog from '@/components/record/RecordFormDialog.vue'
 import type { RecordPreset } from '@/components/record/RecordFormDialog.vue'
 import RecordStatsCards from '@/components/record/RecordStatsCards.vue'
@@ -230,105 +231,123 @@ function consumeQueryPreset(): void {
 </script>
 
 <template>
-  <el-space direction="vertical" alignment="stretch" :size="16" style="width: 100%">
-    <el-card shadow="never">
-      <RecordStatsCards :stats="stats" />
-    </el-card>
+  <div class="page records-view">
+    <PageHeader
+      folio="卷四 · 留痕"
+      title="学习记录"
+      lead="每天记下学了什么、多久、掌握了多少；这些痕迹会变成趋势和建议。"
+    >
+      <template #actions>
+        <el-button type="primary" @click="onCreate">记录学习</el-button>
+      </template>
+    </PageHeader>
 
-    <el-card shadow="never">
-      <div class="toolbar">
-        <div class="filters">
-          <el-date-picker
-            v-model="filterDateRange"
-            type="daterange"
-            value-format="YYYY-MM-DD"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            clearable
-            class="filter-item date-range"
-          />
-          <el-select
-            v-model="filterCourseId"
-            class="filter-item"
-            placeholder="全部课程"
-            clearable
-          >
-            <el-option v-for="c in courses" :key="c.id" :label="c.name" :value="c.id" />
-          </el-select>
-          <el-input
-            v-model="filterKnowledgePoint"
-            class="filter-item"
-            placeholder="知识点（回车筛选）"
-            clearable
-            @keyup.enter="onKnowledgeSearch"
-            @clear="onKnowledgeSearch"
-          />
-          <el-button @click="onResetFilters">重置</el-button>
-        </div>
-        <div class="toolbar-right">
+    <RecordStatsCards :stats="stats" />
+
+    <div class="filter-bar">
+      <el-date-picker
+        v-model="filterDateRange"
+        type="daterange"
+        value-format="YYYY-MM-DD"
+        range-separator="至"
+        start-placeholder="开始日期"
+        end-placeholder="结束日期"
+        clearable
+        class="filter-item filter-item--date"
+      />
+      <el-select v-model="filterCourseId" class="filter-item" placeholder="全部课程" clearable>
+        <el-option v-for="c in courses" :key="c.id" :label="c.name" :value="c.id" />
+      </el-select>
+      <el-input
+        v-model="filterKnowledgePoint"
+        class="filter-item filter-item--wide"
+        placeholder="知识点（回车筛选）"
+        clearable
+        @keyup.enter="onKnowledgeSearch"
+        @clear="onKnowledgeSearch"
+      />
+      <el-button @click="onResetFilters">重置</el-button>
+      <span class="filter-bar__spacer" />
+      <span class="filter-bar__hint">共 {{ total }} 条记录</span>
+    </div>
+
+    <div v-loading="listLoading" class="records-body">
+      <div v-if="!listLoading && records.length === 0" class="empty-note">
+        <span class="seal seal--ghost" aria-hidden="true">记</span>
+        <div class="empty-note__title">还没有学习记录</div>
+        <div>从今天开始记一笔，哪怕只有二十分钟。</div>
+        <div class="empty-note__actions">
           <el-button type="primary" @click="onCreate">记录学习</el-button>
         </div>
       </div>
-    </el-card>
 
-    <el-card shadow="never" v-loading="listLoading">
-      <el-empty
-        v-if="!listLoading && records.length === 0"
-        description="还没有学习记录，去记录第一条学习吧"
-      >
-        <el-button type="primary" @click="onCreate">记录学习</el-button>
-      </el-empty>
       <template v-else>
-        <div v-for="group in dateGroups" :key="group.date" class="date-group">
-          <div class="group-title">
-            {{ group.title }}
-            <span class="group-count">{{ group.records.length }} 条</span>
-          </div>
-          <div v-for="rec in group.records" :key="rec.id" class="record-card">
-            <div class="record-head">
-              <span class="record-content">{{ rec.content }}</span>
-              <span class="record-actions">
-                <el-button link type="primary" size="small" @click="onEdit(rec)">编辑</el-button>
-                <el-button link type="danger" size="small" @click="onDelete(rec)">删除</el-button>
-              </span>
+        <section v-for="group in dateGroups" :key="group.date" class="record-day">
+          <header class="record-day__head">
+            <h2 class="record-day__title">{{ group.title }}</h2>
+            <span v-if="group.title !== group.date" class="record-day__date">
+              {{ group.date }}
+            </span>
+            <span class="record-day__count">{{ group.records.length }} 条</span>
+          </header>
+
+          <article v-for="rec in group.records" :key="rec.id" class="record-row">
+            <div class="record-row__time">
+              <span class="record-duration">{{ formatMinutes(rec.duration_minutes) }}</span>
+              <span class="record-duration-label">时长</span>
             </div>
-            <div class="record-meta">
-              <span class="meta-item">{{ formatMinutes(rec.duration_minutes) }}</span>
-              <span v-if="rec.course_id != null" class="meta-item">
-                {{ courseNameMap.get(rec.course_id) ?? `课程 #${rec.course_id}` }}
-              </span>
-              <span v-if="rec.task_id != null" class="meta-item">任务 #{{ rec.task_id }}</span>
-              <el-tag
-                v-if="rec.mastery_level != null"
-                :type="masterySegment(rec.mastery_level)?.tagType ?? 'info'"
-                size="small"
-                effect="plain"
+
+            <div class="record-row__main">
+              <div class="record-row__head">
+                <h3 class="record-content">{{ rec.content }}</h3>
+                <div class="record-actions">
+                  <el-button link size="small" @click="onEdit(rec)">编辑</el-button>
+                  <el-button link size="small" type="danger" @click="onDelete(rec)">删除</el-button>
+                </div>
+              </div>
+
+              <div class="record-meta">
+                <span v-if="rec.course_id != null" class="meta-item">
+                  {{ courseNameMap.get(rec.course_id) ?? `课程 #${rec.course_id}` }}
+                </span>
+                <span v-if="rec.task_id != null" class="meta-item">任务 #{{ rec.task_id }}</span>
+                <span
+                  v-if="rec.mastery_level != null"
+                  class="mastery-chip"
+                  :class="`is-${masterySegment(rec.mastery_level)?.tagType ?? 'info'}`"
+                >
+                  <span class="mastery-chip__dot" aria-hidden="true" />
+                  自评 {{ rec.mastery_level }} · {{ masterySegment(rec.mastery_level)?.label }}
+                </span>
+                <span v-else class="meta-item">未自评</span>
+              </div>
+
+              <div
+                v-if="normalizeKnowledgePoints(rec.knowledge_points).length > 0"
+                class="record-kps"
               >
-                自评 {{ rec.mastery_level }} · {{ masterySegment(rec.mastery_level)?.label }}
-              </el-tag>
-              <span v-else class="meta-item">未自评</span>
+                <span
+                  v-for="k in normalizeKnowledgePoints(rec.knowledge_points)"
+                  :key="k"
+                  class="kp"
+                >
+                  {{ k }}
+                </span>
+              </div>
+
+              <div v-if="rec.achievement" class="record-note">
+                <span class="note-label">成果</span>
+                <span class="note-text">{{ rec.achievement }}</span>
+              </div>
+              <div v-if="rec.problems" class="record-note is-problem">
+                <span class="note-label">问题</span>
+                <span class="note-text">{{ rec.problems }}</span>
+              </div>
             </div>
-            <div v-if="normalizeKnowledgePoints(rec.knowledge_points).length > 0" class="record-kps">
-              <el-tag
-                v-for="k in normalizeKnowledgePoints(rec.knowledge_points)"
-                :key="k"
-                size="small"
-                type="info"
-                effect="plain"
-              >
-                {{ k }}
-              </el-tag>
-            </div>
-            <div v-if="rec.achievement" class="record-note">
-              <span class="note-label">成果</span>{{ rec.achievement }}
-            </div>
-            <div v-if="rec.problems" class="record-note problems">
-              <span class="note-label">问题</span>{{ rec.problems }}
-            </div>
-          </div>
-        </div>
-        <div class="pagination-row">
+          </article>
+        </section>
+
+        <div class="pager-row">
           <el-pagination
             layout="total, prev, pager, next"
             :total="total"
@@ -338,7 +357,7 @@ function consumeQueryPreset(): void {
           />
         </div>
       </template>
-    </el-card>
+    </div>
 
     <RecordFormDialog
       v-model:visible="formVisible"
@@ -348,110 +367,235 @@ function consumeQueryPreset(): void {
       :knowledge-options="knowledgeOptions"
       @saved="onSaved"
     />
-  </el-space>
+  </div>
 </template>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  justify-content: space-between;
+.records-body {
+  min-height: 240px;
 }
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+
+.record-day {
+  margin-bottom: 28px;
 }
-.filter-item {
-  width: 160px;
-}
-.filter-item.date-range {
-  width: 260px;
-}
-.toolbar-right {
-  display: flex;
-  align-items: center;
-}
-.date-group {
-  margin-bottom: 20px;
-}
-.date-group:last-of-type {
+
+.record-day:last-of-type {
   margin-bottom: 0;
 }
-.group-title {
-  margin-bottom: 8px;
-  font-size: 14px;
+
+.record-day__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.record-day__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 19px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
+  color: var(--ink);
 }
-.group-count {
-  margin-left: 8px;
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--el-text-color-secondary);
+
+.record-day__title::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--vermilion);
+  border-radius: 1px;
 }
-.record-card {
-  padding: 12px;
-  margin-bottom: 8px;
-  border-radius: 6px;
-  background: var(--el-fill-color-light);
+
+.record-day__date {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-4);
 }
-.record-card:last-child {
-  margin-bottom: 0;
+
+.record-day__count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-4);
 }
-.record-head {
+
+.record-row {
+  display: flex;
+  gap: 18px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.record-row:last-child {
+  border-bottom: none;
+}
+
+.record-row__time {
+  flex: 0 0 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  padding-right: 16px;
+  border-right: 1px solid var(--line-soft);
+  text-align: right;
+}
+
+.record-duration {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.record-duration-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--ink-4);
+}
+
+.record-row__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.record-row__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
 }
+
 .record-content {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--el-text-color-primary);
-  word-break: break-all;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.55;
+  color: var(--ink);
+  word-break: break-word;
 }
+
 .record-actions {
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  display: flex;
+  gap: 2px;
 }
+
 .record-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--ink-3);
 }
+
+.meta-item {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-4);
+}
+
+.mastery-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-3);
+}
+
+.mastery-chip__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--dust);
+}
+
+.mastery-chip.is-danger .mastery-chip__dot {
+  background: var(--vermilion);
+}
+
+.mastery-chip.is-warning .mastery-chip__dot {
+  background: var(--ochre);
+}
+
+.mastery-chip.is-success .mastery-chip__dot {
+  background: var(--jade);
+}
+
 .record-kps {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
 }
+
+.kp {
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 18px;
+  color: var(--ink-3);
+  background: var(--paper-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
 .record-note {
-  margin-top: 8px;
-  padding: 8px;
+  display: flex;
+  gap: 10px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
   font-size: 12px;
-  color: var(--el-text-color-regular);
-  background: var(--el-fill-color);
-  border-radius: 4px;
-  word-break: break-all;
+  line-height: 1.7;
+  color: var(--ink-2);
+  word-break: break-word;
 }
-.record-note .note-label {
-  margin-right: 8px;
-  font-weight: 600;
-  color: var(--el-color-success);
+
+.note-label {
+  flex: 0 0 26px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--jade);
+  padding-top: 2px;
 }
-.record-note.problems .note-label {
-  color: var(--el-color-warning);
+
+.record-note.is-problem .note-label {
+  color: var(--ochre);
 }
-.pagination-row {
+
+.note-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pager-row {
   display: flex;
   justify-content: flex-end;
-  margin-top: 16px;
+  padding-top: 16px;
+}
+
+@media (max-width: 720px) {
+  .record-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .record-row__time {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 6px;
+    padding-right: 0;
+    border-right: none;
+    text-align: left;
+  }
 }
 </style>

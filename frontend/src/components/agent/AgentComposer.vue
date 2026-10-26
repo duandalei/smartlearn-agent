@@ -15,7 +15,6 @@
  */
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Promotion, VideoPause } from '@element-plus/icons-vue'
 
 /** 用户消息长度上限（spec §7.1 规则 1——与 AgentView 同值指认）。 */
 const MESSAGE_MAX_LEN = 2000
@@ -59,26 +58,21 @@ function stop(): void {
       :autosize="{ minRows: 2, maxRows: 5 }"
       :maxlength="MESSAGE_MAX_LEN"
       show-word-limit
-      placeholder="向 AI 助手提问，它会自动调用工具分析你的学习数据（Enter 发送，Shift+Enter 换行）"
+      placeholder="问点什么，或让我分析最近的学习记录。"
       @keydown.enter.exact.prevent="submit"
     />
     <div class="action-row">
+      <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
+      <span class="spacer" />
       <el-button
         v-if="!props.streaming"
         type="primary"
-        :icon="Promotion"
         :disabled="!draft.trim()"
         @click="submit"
       >
         发送
       </el-button>
-      <el-button
-        v-else
-        type="danger"
-        :icon="VideoPause"
-        class="stop-btn"
-        @click="stop"
-      >
+      <el-button v-else type="danger" class="stop-btn" @click="stop">
         停止生成
       </el-button>
     </div>
@@ -89,11 +83,19 @@ function stop(): void {
 .composer {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
-/* 停止按钮原位常驻（O5：与发送按钮同一位置，生成期间始终可见）。 */
+
 .action-row {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.composer-hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--ink-4);
 }
 </style>

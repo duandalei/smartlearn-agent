@@ -23,6 +23,11 @@ import { ElMessageBox } from 'element-plus'
 import { breakdownGoal, fetchGoalRoadmap } from '@/api/goal'
 import type { Goal, GoalRoadmap, RoadmapNode } from '@/types'
 import { breakdownErrorMessage, countLeaves, toEChartsTree } from '@/utils/goal'
+import {
+  CHART_COLORS,
+  CHART_FONT,
+  CHART_TOOLTIP,
+} from '@/utils/chartTheme'
 
 echarts.use([TreeChart, CanvasRenderer, TooltipComponent])
 
@@ -69,8 +74,9 @@ const updatedAtText = computed(() => {
 /** 构造 ECharts option（design 2.5.5；折叠策略见 toEChartsTree 注释）。 */
 function buildOption(tree: RoadmapNode): EChartsOption {
   return {
-    // 默认 tooltip 即显示节点 name（与 design 的 formatter: (p) => p.name 行为一致）
-    tooltip: { trigger: 'item' },
+    animationDuration: 320,
+    textStyle: { fontFamily: CHART_FONT },
+    tooltip: { trigger: 'item', ...CHART_TOOLTIP },
     series: [
       {
         type: 'tree',
@@ -80,10 +86,28 @@ function buildOption(tree: RoadmapNode): EChartsOption {
         expandAndCollapse: true,
         // 与 data 内 collapsed（depth > 1）策略对齐的兜底；collapsed 优先生效
         initialTreeDepth: 1,
-        symbolSize: 12,
-        label: { position: 'left', fontSize: 12, color: '#303133' },
-        leaves: { label: { position: 'right', color: '#67C23A' } },
-        lineStyle: { color: '#C0C4CC', width: 1.5 },
+        symbolSize: 7,
+        itemStyle: {
+          color: CHART_COLORS.ink,
+          borderColor: CHART_COLORS.paper,
+          borderWidth: 1,
+        },
+        label: {
+          position: 'left',
+          fontSize: 12,
+          color: CHART_COLORS.ink,
+          fontFamily: CHART_FONT,
+        },
+        leaves: {
+          label: {
+            position: 'right',
+            color: CHART_COLORS.jade,
+            fontSize: 12,
+            fontFamily: CHART_FONT,
+          },
+          itemStyle: { color: CHART_COLORS.jade },
+        },
+        lineStyle: { color: CHART_COLORS.lineStrong, width: 1 },
         emphasis: { focus: 'descendant' },
       },
     ],
@@ -206,7 +230,7 @@ onUnmounted(() => {
 <template>
   <el-drawer
     :model-value="visible"
-    size="70%"
+    size="min(1080px, 94vw)"
     @update:model-value="(v: boolean) => emit('update:visible', v)"
     @opened="onDrawerOpened"
   >
@@ -277,16 +301,18 @@ onUnmounted(() => {
   min-width: 0;
 }
 .title-text {
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: 19px;
   font-weight: 600;
-  color: #303133;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .updated-at {
-  font-size: 12px;
-  color: #909399;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-4);
   white-space: nowrap;
 }
 .drawer-body {
@@ -307,9 +333,9 @@ onUnmounted(() => {
   justify-content: center;
 }
 .empty-hint {
-  font-size: 13px;
-  color: #909399;
-  line-height: 1.8;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--ink-3);
   margin-bottom: 16px;
 }
 .empty-btn {
@@ -322,9 +348,10 @@ onUnmounted(() => {
 .chart-summary {
   flex: 0 0 auto;
   padding: 10px 4px 2px;
-  font-size: 13px;
-  color: #606266;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
   text-align: center;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--line);
 }
 </style>

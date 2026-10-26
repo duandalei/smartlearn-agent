@@ -390,8 +390,8 @@ function handleCancel(): void {
 }
 .field-hint {
   margin-left: 8px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  color: var(--ink-3);
 }
 .mastery-block {
   width: 100%;
@@ -402,11 +402,12 @@ function handleCancel(): void {
   margin: 18px 8px 4px;
 }
 .mastery-segments .seg {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-4);
 }
 .mastery-segments .seg.active {
   font-weight: 600;
-  color: var(--el-color-primary);
+  color: var(--vermilion);
 }
 </style>

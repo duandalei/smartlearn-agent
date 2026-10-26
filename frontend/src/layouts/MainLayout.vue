@@ -1,29 +1,33 @@
 <script setup lang="ts">
 /**
- * 主框架布局：左侧菜单 + 顶部栏 + 内容区。
+ * 主框架布局：墨色书脊侧栏 + 纸面顶栏 + 内容区。
  *
- * 菜单项与 PROJECT_CONTEXT 7.1 路由表一一对应，
- * 点击菜单执行路由跳转（el-menu router 模式）。
+ * 视觉由 DESIGN.md 定义；菜单分组与页码在 SidebarNav 内。
+ * 窄屏（≤960px）侧栏收进抽屉，顶栏出现菜单按钮。
  */
-import { computed, onMounted } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 
+import SidebarNav from '@/components/layout/SidebarNav.vue'
 import { fetchLlmSettings } from '@/api/settings'
 import { useUserStore } from '@/stores/user'
-
-interface MenuItem {
-  /** 路由路径（作为 el-menu-item 的 index） */
-  index: string
-  /** 菜单标题 */
-  title: string
-  /** Element Plus 图标组件名 */
-  icon: string
-}
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+
+const mobileNavOpen = ref(false)
+const mainEl = ref<HTMLElement | null>(null)
+
+/** 页面切换后回到顶部，避免长页面切换时停在半截。 */
+watch(
+  () => route.fullPath,
+  async () => {
+    await nextTick()
+    if (mainEl.value) mainEl.value.scrollTop = 0
+  },
+)
 
 onMounted(async () => {
   await userStore.loadUser()
@@ -58,107 +62,277 @@ async function maybePromptLlmSettings(): Promise<void> {
   }
 }
 
-const menus: MenuItem[] = [
-  { index: '/dashboard', title: '学习中心', icon: 'Odometer' },
-  { index: '/goals', title: '学习目标', icon: 'Aim' },
-  { index: '/plans', title: '学习计划', icon: 'Calendar' },
-  { index: '/tasks', title: '学习任务', icon: 'List' },
-  { index: '/learning-records', title: '学习记录', icon: 'Notebook' },
-  { index: '/knowledge-base', title: '知识库', icon: 'Collection' },
-  { index: '/ai-agent', title: 'AI 助手', icon: 'ChatDotRound' },
-  { index: '/reports', title: '成长报告', icon: 'DataAnalysis' },
-  // 学习档案为低频账号入口，沉底；设置永远在最底部
-  { index: '/profile', title: '学习档案', icon: 'User' },
-  { index: '/settings', title: '设置', icon: 'Setting' },
-]
-
-/** 当前高亮菜单项 = 当前路由路径 */
-const activeMenu = computed(() => route.path)
 /** 顶部栏标题 = 当前路由 meta.title */
 const currentTitle = computed(() => (route.meta.title as string) || '')
+
+/** 今天的日期：10.26 · 周一 */
+const todayLabel = computed(() => {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const weekday = ['日', '一', '二', '三', '四', '五', '六'][now.getDay()]
+  return `${month}.${day} · 周${weekday}`
+})
 </script>
 
 <template>
-  <el-container class="layout">
-    <!-- 左侧菜单 -->
-    <el-aside width="220px" class="layout-aside">
-      <div class="logo">彭城智学</div>
-      <el-menu
-        router
-        :default-active="activeMenu"
-        class="layout-menu"
-        background-color="#001529"
-        text-color="#c9d1d9"
-        active-text-color="#ffffff"
-      >
-        <el-menu-item v-for="item in menus" :key="item.index" :index="item.index">
-          <el-icon><component :is="item.icon" /></el-icon>
-          <span>{{ item.title }}</span>
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
+  <div class="layout">
+    <aside class="layout-aside">
+      <SidebarNav :active-path="route.path" />
+    </aside>
 
-    <el-container>
-      <!-- 顶部栏 -->
-      <el-header class="layout-header">
-        <span class="header-title">{{ currentTitle }}</span>
+    <div class="layout-body">
+      <header class="layout-header">
+        <div class="header-left">
+          <button
+            class="nav-toggle"
+            type="button"
+            aria-label="打开导航"
+            @click="mobileNavOpen = true"
+          >
+            <span /><span /><span />
+          </button>
+          <div class="header-location">
+            <span class="header-location__dot" aria-hidden="true" />
+            <span class="header-location__brand">彭城智学</span>
+            <span class="header-location__sep" aria-hidden="true">/</span>
+            <span class="header-location__title">{{ currentTitle }}</span>
+          </div>
+        </div>
+
         <div class="header-right">
+          <span class="header-date">{{ todayLabel }}</span>
+          <span class="header-divider" aria-hidden="true" />
           <span class="header-user">
+            <span class="header-user__dot" aria-hidden="true" />
             {{ userStore.userInfo?.username || '本地用户' }}
           </span>
         </div>
-      </el-header>
+      </header>
 
-      <!-- 内容区 -->
-      <el-main class="layout-main">
-        <router-view />
-      </el-main>
-    </el-container>
-  </el-container>
+      <main ref="mainEl" class="layout-main">
+        <router-view v-slot="{ Component }">
+          <transition name="route-fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
+      </main>
+    </div>
+
+    <el-drawer
+      v-model="mobileNavOpen"
+      direction="ltr"
+      size="276px"
+      :with-header="false"
+      class="mobile-nav-drawer"
+    >
+      <SidebarNav :active-path="route.path" @navigate="mobileNavOpen = false" />
+    </el-drawer>
+  </div>
 </template>
 
 <style scoped>
 .layout {
+  display: flex;
   height: 100vh;
+  overflow: hidden;
+  background: var(--paper);
 }
+
 .layout-aside {
-  background-color: #001529;
-  overflow-y: auto;
+  flex: 0 0 248px;
+  width: 248px;
+  height: 100%;
+  background: var(--ink);
+  border-right: 1px solid rgba(28, 42, 36, 0.4);
 }
-.logo {
-  height: 60px;
-  line-height: 60px;
-  text-align: center;
-  color: #ffffff;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 2px;
+
+.layout-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
-.layout-menu {
-  border-right: none;
-}
+
+/* Top bar ---------------------------------------------------------------- */
 .layout-header {
+  flex: 0 0 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: #ffffff;
-  border-bottom: 1px solid #e4e7ed;
+  gap: 16px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(247, 246, 242, 0.92);
 }
-.header-title {
-  font-size: 16px;
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.header-location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.header-location__dot {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  background: var(--vermilion);
+  border-radius: 1px;
+}
+
+.header-location__brand {
+  font-family: var(--font-display);
+  font-size: 13px;
   font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
 }
+
+.header-location__sep {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--line-strong);
+}
+
+.header-location__title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  flex: 0 0 auto;
 }
+
+.header-date {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.header-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--line-strong);
+}
+
 .header-user {
-  color: #606266;
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
 }
+
+.header-user__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--jade);
+}
+
+/* Menu toggle (mobile only) ---------------------------------------------- */
+.nav-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.nav-toggle span {
+  display: block;
+  width: 100%;
+  height: 1px;
+  background: var(--ink);
+}
+
+.nav-toggle:hover {
+  border-color: var(--vermilion);
+}
+
+.nav-toggle:hover span {
+  background: var(--vermilion);
+}
+
+/* Main ------------------------------------------------------------------- */
 .layout-main {
-  background-color: #f5f7fa;
-  padding: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Responsive ------------------------------------------------------------- */
+@media (max-width: 1200px) {
+  .layout-header {
+    padding: 0 28px;
+  }
+}
+
+@media (max-width: 960px) {
+  .layout-aside {
+    display: none;
+  }
+
+  .layout-header {
+    padding: 0 20px;
+  }
+
+  .nav-toggle {
+    display: flex;
+  }
+}
+
+@media (max-width: 720px) {
+  .layout-header {
+    padding: 0 16px;
+  }
+
+  .header-date {
+    display: none;
+  }
+
+  .header-divider {
+    display: none;
+  }
+}
+</style>
+
+<style>
+/* 抽屉被 teleport 到 body，需全局作用域设置墨色背景 */
+.mobile-nav-drawer {
+  background: var(--ink) !important;
+}
+
+.mobile-nav-drawer .el-drawer__body {
+  padding: 0 !important;
+  height: 100%;
 }
 </style>

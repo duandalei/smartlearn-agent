@@ -57,10 +57,14 @@ const visibleSources = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: 6px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--line);
 }
 .sources-title {
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--ink-4);
 }
 </style>

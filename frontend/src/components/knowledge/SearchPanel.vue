@@ -87,85 +87,116 @@ function fmtScore(score: number): string {
 
     <div v-if="searched" class="result-area">
       <template v-if="searched.results.length">
-        <div v-for="(hit, idx) in searched.results" :key="idx" class="hit-card">
+        <article v-for="(hit, idx) in searched.results" :key="idx" class="hit-row">
           <div class="hit-head">
+            <span class="hit-index">{{ String(idx + 1).padStart(2, '0') }}</span>
             <span class="hit-source">{{ hit.source_title }}</span>
             <span class="hit-score">相似度 {{ fmtScore(hit.score) }}</span>
           </div>
           <div class="hit-content">
             <MarkdownText :content="hit.content" />
           </div>
-        </div>
+        </article>
       </template>
-      <el-empty v-else description="未命中相关内容" :image-size="80" />
+      <div v-else class="empty-note">
+        <div class="empty-note__title">没有命中相关内容</div>
+        <div>换一组与原文更接近的关键词再试一次。</div>
+      </div>
     </div>
-    <div v-else class="search-hint">输入问题并点击搜索，将在你的个人知识库中检索最相关的片段。</div>
+    <div v-else class="search-hint">
+      输入问题并点击搜索，将在你的个人知识库中检索最相关的片段。
+    </div>
   </div>
 </template>
 
 <style scoped>
 .search-bar {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
 }
 .search-bar .el-input {
   flex: 1 1 auto;
 }
 .search-bar .el-input-number {
-  width: 100px;
+  width: 96px;
   flex: 0 0 auto;
 }
 .offline-alert {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 .offline-desc {
   margin: 4px 0 0;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 12px;
+  line-height: 1.7;
 }
 .result-area {
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
 }
-.hit-card {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-  padding: 12px 14px;
+.hit-row {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
 .hit-head {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.hit-index {
+  flex: 0 0 20px;
+  font-family: var(--font-display);
+  font-variant-numeric: lining-nums tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vermilion);
 }
 .hit-source {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink-3);
 }
 .hit-score {
   flex: 0 0 auto;
-  font-size: 12px;
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-  border-radius: 10px;
-  padding: 2px 10px;
+  margin-left: auto;
+  padding: 0 7px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 18px;
+  color: #8f3325;
+  background: var(--vermilion-wash);
+  border: 1px solid #e4b6ac;
+  border-radius: var(--radius);
 }
 .hit-content {
-  margin: 0;
+  margin-left: 30px;
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.75;
+  color: var(--ink-2);
   word-break: break-word;
 }
 .search-hint {
   margin-top: 16px;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-4);
+}
+
+@media (max-width: 720px) {
+  .search-bar {
+    flex-wrap: wrap;
+  }
+
+  .search-bar .el-input {
+    flex-basis: 100%;
+  }
+
+  .hit-content {
+    margin-left: 0;
+  }
 }
 </style>

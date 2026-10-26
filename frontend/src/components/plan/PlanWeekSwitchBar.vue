@@ -79,13 +79,23 @@ const upcomingLabel = computed(() => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: var(--el-fill-color-light);
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  font-size: 12px;
+  color: var(--ink-3);
 }
 .switch-text {
   line-height: 1.5;
+}
+.switch-text::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 8px;
+  vertical-align: 1px;
+  background: var(--ochre);
 }
 </style>
