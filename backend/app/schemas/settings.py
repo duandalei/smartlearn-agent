@@ -8,7 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class LLMSettingsIn(BaseModel):
     """设置页表单 / 测试连接入参。
 
-    ``*_api_key`` 留空表示沿用已保存的值；向量三项留空时回退对话配置。
+    ``*_api_key`` 留空表示沿用已保存的值；向量三项（Base URL / Key / 模型名）
+    整组留空时回退对话配置。
     """
 
     model_config = ConfigDict(extra="forbid")

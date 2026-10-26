@@ -121,13 +121,21 @@ def save_settings(payload: dict[str, Any]) -> dict[str, Any]:
             CODE_PARAM_INVALID, "API Key 不能为空", http_status=422
         )
 
+    embedding_base_url = str(payload.get("embedding_base_url") or "").strip()
+    embedding_model = str(payload.get("embedding_model") or "").strip()
+    embedding_api_key = str(payload.get("embedding_api_key") or "").strip()
+    # 向量 Key 留空表示沿用已保存值；但整组向量配置被清空时一并清除，
+    # 否则残留的旧 Key 会让运行时无法回退到对话配置。
+    if not embedding_api_key and (embedding_base_url or embedding_model):
+        embedding_api_key = settings.EMBEDDING_API_KEY.strip()
+
     updates = {
         "LLM_BASE_URL": base_url,
         "LLM_API_KEY": api_key,
         "LLM_MODEL": model,
-        "EMBEDDING_BASE_URL": str(payload.get("embedding_base_url") or "").strip(),
-        "EMBEDDING_API_KEY": str(payload.get("embedding_api_key") or "").strip(),
-        "EMBEDDING_MODEL": str(payload.get("embedding_model") or "").strip(),
+        "EMBEDDING_BASE_URL": embedding_base_url,
+        "EMBEDDING_API_KEY": embedding_api_key,
+        "EMBEDDING_MODEL": embedding_model,
     }
     _write_env(updates)
     for key, value in updates.items():
@@ -144,18 +152,24 @@ async def test_connection(payload: dict[str, Any]) -> dict[str, Any]:
     )
     llm_model = str(payload.get("llm_model") or settings.LLM_MODEL).strip()
 
-    emb_base_url = (
-        str(payload.get("embedding_base_url") or "").strip()
-        or llm_base_url
-    )
-    emb_api_key = (
-        str(payload.get("embedding_api_key") or "").strip()
-        or llm_api_key
-    )
-    emb_model = (
-        str(payload.get("embedding_model") or "").strip()
-        or llm_model
-    )
+    emb_base_url = str(payload.get("embedding_base_url") or "").strip()
+    emb_model = str(payload.get("embedding_model") or "").strip()
+    emb_api_key = str(payload.get("embedding_api_key") or "").strip()
+
+    if emb_base_url or emb_model:
+        # 表单已填向量配置：空白项依次回退「已保存的向量配置」→「对话配置」。
+        # Key 输入框不回显明文，留空必须沿用已保存的向量 Key，否则会拿对话
+        # Key 去请求向量服务商（如 DeepSeek Key 请求硅基流动）而误报 401。
+        emb_base_url = (
+            emb_base_url or settings.EMBEDDING_BASE_URL.strip() or llm_base_url
+        )
+        emb_model = emb_model or settings.EMBEDDING_MODEL.strip() or llm_model
+        emb_api_key = (
+            emb_api_key or settings.EMBEDDING_API_KEY.strip() or llm_api_key
+        )
+    else:
+        # 表单未填向量配置：整组回退对话配置。
+        emb_base_url, emb_api_key, emb_model = llm_base_url, llm_api_key, llm_model
 
     return {
         "chat": await _test_chat(llm_base_url, llm_api_key, llm_model),
